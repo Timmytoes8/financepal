@@ -1041,11 +1041,11 @@ importers:
         specifier: 4.13.1
         version: 4.13.1
       '@microsoft/teams.api':
-        specifier: 2.0.9
-        version: 2.0.9
+        specifier: 2.0.10
+        version: 2.0.10
       '@microsoft/teams.apps':
-        specifier: 2.0.9
-        version: 2.0.9
+        specifier: 2.0.10
+        version: 2.0.10
       express:
         specifier: 5.2.1
         version: 5.2.1
@@ -2965,24 +2965,24 @@ packages:
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
 
-  '@microsoft/teams.api@2.0.9':
-    resolution: {integrity: sha512-U8Bv7Ok/zZa4FdwS6xbB2Wts2gYyC3+f2gFPm9chMkYa7O2doFw+7AZXSiUEBY2p5IlvD4RwKEoaXuBeuDqwfQ==}
+  '@microsoft/teams.api@2.0.10':
+    resolution: {integrity: sha512-jaadhzjRUR4ynp9TD9IpOV7voxYIG7piTdck76/kwdmZVPakQxE2NWAGYwLXdGsE6UZcTbTarU5KjfUST6hX4A==}
     engines: {node: '>=20'}
 
-  '@microsoft/teams.apps@2.0.9':
-    resolution: {integrity: sha512-aSJNdxFlEnKYH3FfQ5Z8JwoMmFwvJ5WB7fPPabio+K0W4g4hAjWt3JPSjvN/k4J2LajRPMYWzbTWUgmh3LubLw==}
+  '@microsoft/teams.apps@2.0.10':
+    resolution: {integrity: sha512-ZpyO77Lxu2GUQnt8NhRaeYbYqISP5yuTef7kns5ZSwzM4+xGDztCgyxsRpUE4YGKAXj85eGM4hbgq2DTXMMf/w==}
     engines: {node: '>=20'}
 
-  '@microsoft/teams.cards@2.0.9':
-    resolution: {integrity: sha512-YYec0ATVI3jG98UMReTUsT+y8BfoB7JF3kTDzX8Co/iJOV9GGQ86jT+hgYUBK3Vc+avvoimWT8poJu7Clwz2Sg==}
+  '@microsoft/teams.cards@2.0.10':
+    resolution: {integrity: sha512-Sbmm9cqH/eiuZq9jGWatpLeLbS8co5AfYCFSejSZ1VEBzRBFSZIo06H5JZ/obJZ/I/M2E/6k2gR2wQwwdIxWtw==}
     engines: {node: '>=20'}
 
-  '@microsoft/teams.common@2.0.9':
-    resolution: {integrity: sha512-vgMgZv9uc1v4f3gUlY/+6tjm+0vWMO8Nxrw9pCCvR7Y4+au075vBTDq0mPiq4uT/S1786hEegdny2c+3U1ECCA==}
+  '@microsoft/teams.common@2.0.10':
+    resolution: {integrity: sha512-d69rkdSm3b/6T4YxURyoQQshVfCcMXE3Cd30EW4JrnUSUt8GbvVEAQxKjAwNR7MfLpJ7L1OkYoSqfXerTinj/Q==}
     engines: {node: '>=20'}
 
-  '@microsoft/teams.graph@2.0.9':
-    resolution: {integrity: sha512-AZDAfiGdAzA1cNh84z5p7kSqGHakOPgkoNd1sWM7Hg09jzmwh1F5TuMXLS0CKZjOOBtovXw84cqL5Pdmprq6yA==}
+  '@microsoft/teams.graph@2.0.10':
+    resolution: {integrity: sha512-WzXDmjqdYzKtQyT26He7TdIUzjhX8ZvBfJnBNzqb3d7Z6VzC7E6vifmQ19Bt/QP1VmCB3WLTtHFf/JS+2XA0Ww==}
     engines: {node: '>=20'}
 
   '@mistralai/mistralai@2.2.1':
@@ -9777,21 +9777,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@microsoft/teams.api@2.0.9':
+  '@microsoft/teams.api@2.0.10':
     dependencies:
-      '@microsoft/teams.cards': 2.0.9
-      '@microsoft/teams.common': 2.0.9
+      '@microsoft/teams.cards': 2.0.10
+      '@microsoft/teams.common': 2.0.10
       jwt-decode: 4.0.0
       qs: 6.14.2
     transitivePeerDependencies:
       - debug
 
-  '@microsoft/teams.apps@2.0.9':
+  '@microsoft/teams.apps@2.0.10':
     dependencies:
       '@azure/msal-node': 3.8.10
-      '@microsoft/teams.api': 2.0.9
-      '@microsoft/teams.common': 2.0.9
-      '@microsoft/teams.graph': 2.0.9
+      '@microsoft/teams.api': 2.0.10
+      '@microsoft/teams.common': 2.0.10
+      '@microsoft/teams.graph': 2.0.10
       axios: 1.16.0
       cors: 2.8.6
       express: 5.2.1
@@ -9802,17 +9802,17 @@ snapshots:
       - debug
       - supports-color
 
-  '@microsoft/teams.cards@2.0.9': {}
+  '@microsoft/teams.cards@2.0.10': {}
 
-  '@microsoft/teams.common@2.0.9':
+  '@microsoft/teams.common@2.0.10':
     dependencies:
       axios: 1.16.0
     transitivePeerDependencies:
       - debug
 
-  '@microsoft/teams.graph@2.0.9':
+  '@microsoft/teams.graph@2.0.10':
     dependencies:
-      '@microsoft/teams.common': 2.0.9
+      '@microsoft/teams.common': 2.0.10
       qs: 6.14.2
     transitivePeerDependencies:
       - debug

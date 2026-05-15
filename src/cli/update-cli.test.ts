@@ -7,6 +7,7 @@ import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TEST_BUNDLED_RUNTIME_SIDECAR_PATHS } from "../../test/helpers/bundled-runtime-sidecars.js";
 import type { OpenClawConfig, ConfigFileSnapshot } from "../config/types.openclaw.js";
+import type { PluginInstallRecord } from "../config/types.plugins.js";
 import { writePackageDistInventory } from "../infra/package-dist-inventory.js";
 import { isBetaTag } from "../infra/update-channels.js";
 import type { UpdateRunResult } from "../infra/update-runner.js";
@@ -274,11 +275,14 @@ const {
 } = await import("../config/config.js");
 const { checkUpdateStatus, fetchNpmPackageTargetStatus, fetchNpmTagVersion, resolveNpmChannelTag } =
   await import("../infra/update-check.js");
+const { CONTROL_PLANE_UPDATE_SENTINEL_META_ENV } =
+  await import("../infra/update-control-plane-sentinel.js");
 const { runCommandWithTimeout } = await import("../process/exec.js");
 const { runDaemonRestart, runDaemonInstall } = await import("./daemon-cli.js");
 const { doctorCommand } = await import("../commands/doctor.js");
 const { defaultRuntime } = await import("../runtime.js");
-const { updateCommand, updateStatusCommand, updateWizardCommand } = await import("./update-cli.js");
+const { updateCommand, updateFinalizeCommand, updateStatusCommand, updateWizardCommand } =
+  await import("./update-cli.js");
 const updateCliShared = await import("./update-cli/shared.js");
 const { resolveGitInstallDir } = updateCliShared;
 const { spawnSync } = await import("node:child_process");
@@ -2144,6 +2148,85 @@ describe("update-cli", () => {
     ).toBe("1");
   });
 
+  it("runs package post-update doctor from the verified package root after a staged swap", async () => {
+    const tempDir = await createTrackedTempDir("openclaw-update-staged-doctor-");
+    const nodeModules = path.join(tempDir, "lib", "node_modules");
+    const pkgRoot = path.join(nodeModules, "openclaw");
+    const entryPath = path.join(pkgRoot, "dist", "index.js");
+    mockPackageInstallStatus(pkgRoot);
+    await fs.mkdir(path.dirname(entryPath), { recursive: true });
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({ name: "openclaw", version: "2026.4.21" }),
+      "utf-8",
+    );
+    await fs.writeFile(entryPath, "export {};\n", "utf-8");
+    await writePackageDistInventory(pkgRoot);
+    pathExists.mockImplementation(async (candidate: string) => {
+      try {
+        await fs.access(candidate);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    vi.mocked(runCommandWithTimeout).mockImplementation(async (argv) => {
+      if (!Array.isArray(argv)) {
+        return {
+          stdout: "",
+          stderr: "",
+          code: 0,
+          signal: null,
+          killed: false,
+          termination: "exit",
+        };
+      }
+      if (argv[0] === "npm" && argv[1] === "root" && argv[2] === "-g") {
+        return {
+          stdout: `${nodeModules}\n`,
+          stderr: "",
+          code: 0,
+          signal: null,
+          killed: false,
+          termination: "exit",
+        };
+      }
+      if (argv[0] === "npm" && argv[1] === "i" && argv.includes("--prefix")) {
+        const stagePrefix = argv[argv.indexOf("--prefix") + 1];
+        const stagePackageRoot = path.join(
+          requireValue(stagePrefix, "stage prefix"),
+          "lib",
+          "node_modules",
+          "openclaw",
+        );
+        const stageEntryPath = path.join(stagePackageRoot, "dist", "index.js");
+        await fs.mkdir(path.dirname(stageEntryPath), { recursive: true });
+        await fs.writeFile(
+          path.join(stagePackageRoot, "package.json"),
+          JSON.stringify({ name: "openclaw", version: "2026.5.14" }),
+          "utf-8",
+        );
+        await fs.writeFile(stageEntryPath, "export {};\n", "utf-8");
+        await writePackageDistInventory(stagePackageRoot);
+      }
+      return {
+        stdout: "",
+        stderr: "",
+        code: 0,
+        signal: null,
+        killed: false,
+        termination: "exit",
+      };
+    });
+
+    await updateCommand({ yes: true });
+
+    const doctorCall = doctorCommandCall();
+    expect(doctorCall?.[0].slice(1)).toEqual([entryPath, "doctor", "--non-interactive", "--fix"]);
+    expect(doctorCall?.[1].cwd).toBe(pkgRoot);
+    expect(defaultRuntime.exit).not.toHaveBeenCalledWith(1);
+  });
+
   it("stops a running managed gateway before package replacement", async () => {
     const tempDir = await createTrackedTempDir("openclaw-update-stop-service-");
     const nodeModules = path.join(tempDir, "node_modules");
@@ -3174,6 +3257,152 @@ describe("update-cli", () => {
     expect(defaultRuntime.exit).not.toHaveBeenCalledWith(1);
   });
 
+  it("writes the control-plane update sentinel after managed package restart health passes", async () => {
+    const stateDir = await createTrackedTempDir("openclaw-update-sentinel-state-");
+    const metaDir = await createTrackedTempDir("openclaw-update-sentinel-meta-");
+    const metaPath = path.join(metaDir, "meta.json");
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify({
+        version: 1,
+        meta: {
+          sessionKey: "agent:main:webchat:dm:user-123",
+          deliveryContext: { channel: "webchat", to: "webchat:user-123", accountId: "default" },
+          note: "Update requested from the agent.",
+          continuationMessage: "Check the running version and finish the update report.",
+        },
+      }),
+    );
+
+    const updatedRoot = createCaseDir("openclaw-updated-root");
+    const updatedEntrypoint = path.join(updatedRoot, "dist", "entry.js");
+    setupUpdatedRootRefresh({
+      entrypoints: [updatedEntrypoint],
+      gatewayUpdateImpl: async () =>
+        makeOkUpdateResult({
+          mode: "npm",
+          root: updatedRoot,
+          before: { version: "2026.4.23" },
+          after: { version: "2026.4.24" },
+        }),
+    });
+    serviceLoaded.mockResolvedValue(true);
+    probeGateway.mockResolvedValue({
+      ok: true,
+      close: null,
+      server: {
+        version: "2026.4.24",
+        connId: "updated-gateway",
+      },
+      auth: { role: "operator", scopes: ["operator.read"], capability: "read_only" },
+      health: null,
+      status: null,
+      presence: null,
+      configSnapshot: null,
+      connectLatencyMs: 1,
+      error: null,
+      url: "ws://127.0.0.1:18789",
+    });
+
+    await withEnvAsync(
+      {
+        [CONTROL_PLANE_UPDATE_SENTINEL_META_ENV]: metaPath,
+        OPENCLAW_STATE_DIR: stateDir,
+      },
+      async () => {
+        await updateCommand({ yes: true, json: true });
+      },
+    );
+
+    const raw = await fs.readFile(path.join(stateDir, "restart-sentinel.json"), "utf-8");
+    const sentinel = JSON.parse(raw) as {
+      payload?: {
+        status?: string;
+        message?: string | null;
+        continuation?: { kind?: string; message?: string };
+        stats?: { mode?: string; after?: { version?: string | null } };
+      };
+    };
+    expect(sentinel.payload?.status).toBe("ok");
+    expect(sentinel.payload?.message).toBe("Update requested from the agent.");
+    expect(sentinel.payload?.continuation).toEqual({
+      kind: "agentTurn",
+      message: "Check the running version and finish the update report.",
+    });
+    expect(sentinel.payload?.stats?.mode).toBe("npm");
+    expect(sentinel.payload?.stats?.after?.version).toBe("2026.4.24");
+  });
+
+  it("marks the control-plane update sentinel failed when restart health verification fails", async () => {
+    const stateDir = await createTrackedTempDir("openclaw-update-sentinel-state-");
+    const metaDir = await createTrackedTempDir("openclaw-update-sentinel-meta-");
+    const metaPath = path.join(metaDir, "meta.json");
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify({
+        version: 1,
+        meta: {
+          sessionKey: "agent:main:webchat:dm:user-123",
+          continuationMessage: "This should not report a successful update.",
+        },
+      }),
+    );
+
+    const updatedRoot = createCaseDir("openclaw-updated-root");
+    const updatedEntrypoint = path.join(updatedRoot, "dist", "entry.js");
+    setupUpdatedRootRefresh({
+      entrypoints: [updatedEntrypoint],
+      gatewayUpdateImpl: async () =>
+        makeOkUpdateResult({
+          mode: "npm",
+          root: updatedRoot,
+          before: { version: "2026.4.23" },
+          after: { version: "2026.4.24" },
+        }),
+    });
+    prepareRestartScript.mockResolvedValue(null);
+    serviceLoaded.mockResolvedValue(true);
+    probeGateway.mockResolvedValue({
+      ok: true,
+      close: null,
+      server: {
+        version: "2026.4.23",
+        connId: "old-gateway",
+      },
+      auth: { role: "operator", scopes: ["operator.read"], capability: "read_only" },
+      health: null,
+      status: null,
+      presence: null,
+      configSnapshot: null,
+      connectLatencyMs: 1,
+      error: null,
+      url: "ws://127.0.0.1:18789",
+    });
+
+    await withEnvAsync(
+      {
+        [CONTROL_PLANE_UPDATE_SENTINEL_META_ENV]: metaPath,
+        OPENCLAW_STATE_DIR: stateDir,
+      },
+      async () => {
+        await updateCommand({ yes: true, json: true });
+      },
+    );
+
+    const raw = await fs.readFile(path.join(stateDir, "restart-sentinel.json"), "utf-8");
+    const sentinel = JSON.parse(raw) as {
+      payload?: {
+        status?: string;
+        continuation?: unknown;
+        stats?: { reason?: string | null };
+      };
+    };
+    expect(sentinel.payload?.status).toBe("error");
+    expect(sentinel.payload?.stats?.reason).toBe("restart-unhealthy");
+    expect(sentinel.payload?.continuation).toBeUndefined();
+    expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
+  });
+
   it("fails a package update when the restarted gateway reports activated plugin load errors", async () => {
     const updatedRoot = createCaseDir("openclaw-updated-root");
     const updatedEntrypoint = path.join(updatedRoot, "dist", "entry.js");
@@ -3354,6 +3583,152 @@ describe("update-cli", () => {
     } finally {
       randomSpy.mockRestore();
     }
+  });
+
+  it("updateFinalizeCommand runs doctor and plugin convergence with full update env", async () => {
+    await withEnvAsync(
+      {
+        OPENCLAW_UPDATE_IN_PROGRESS: undefined,
+        OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE: undefined,
+      },
+      async () => {
+        let doctorEnv: NodeJS.ProcessEnv | undefined;
+        vi.mocked(doctorCommand).mockImplementationOnce(async () => {
+          doctorEnv = { ...process.env };
+        });
+        vi.mocked(defaultRuntime.writeJson).mockClear();
+
+        await updateFinalizeCommand({ json: true, yes: true, timeout: "9", restart: false });
+
+        expect(doctorEnv?.OPENCLAW_UPDATE_IN_PROGRESS).toBe("1");
+        expect(doctorEnv?.OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE).toBe("1");
+        expect(process.env.OPENCLAW_UPDATE_IN_PROGRESS).toBeUndefined();
+        expect(process.env.OPENCLAW_UPDATE_PARENT_SUPPORTS_DOCTOR_CONFIG_WRITE).toBeUndefined();
+        expect(doctorCommand).toHaveBeenCalledWith(defaultRuntime, {
+          nonInteractive: true,
+          repair: true,
+          yes: true,
+        });
+        expect(syncPluginCall()?.channel).toBe("stable");
+        expect(lastNpmPluginUpdateCall()?.timeoutMs).toBe(9_000);
+        const output = lastWriteJsonCall() as
+          | {
+              status?: string;
+              mode?: string;
+              restart?: boolean;
+              postUpdate?: { doctor?: { status?: string }; plugins?: { status?: string } };
+            }
+          | undefined;
+        expect(output?.status).toBe("ok");
+        expect(output?.mode).toBe("finalize");
+        expect(output?.restart).toBe(false);
+        expect(output?.postUpdate?.doctor?.status).toBe("ok");
+        expect(output?.postUpdate?.plugins?.status).toBe("ok");
+      },
+    );
+  });
+
+  it("updateFinalizeCommand repairs doctor by default and refreshes plugin state after doctor", async () => {
+    const preDoctorConfig = {
+      update: { channel: "stable" },
+      plugins: { entries: { pre: { enabled: true } } },
+    } as OpenClawConfig;
+    const postDoctorConfig = {
+      update: { channel: "beta" },
+      plugins: { entries: { post: { enabled: true } } },
+    } as OpenClawConfig;
+    const preDoctorSnapshot: ConfigFileSnapshot = {
+      ...baseSnapshot,
+      sourceConfig: preDoctorConfig,
+      resolved: preDoctorConfig,
+      runtimeConfig: preDoctorConfig,
+      config: preDoctorConfig,
+      hash: "pre-doctor",
+    };
+    const postDoctorSnapshot: ConfigFileSnapshot = {
+      ...baseSnapshot,
+      sourceConfig: postDoctorConfig,
+      resolved: postDoctorConfig,
+      runtimeConfig: postDoctorConfig,
+      config: postDoctorConfig,
+      hash: "post-doctor",
+    };
+    const postDoctorRecords = {
+      "post-plugin": {
+        source: "npm",
+        spec: "post-plugin@1.0.0",
+      },
+    } satisfies Record<string, PluginInstallRecord>;
+    vi.mocked(readConfigFileSnapshot)
+      .mockResolvedValueOnce(preDoctorSnapshot)
+      .mockResolvedValueOnce(postDoctorSnapshot);
+    loadInstalledPluginIndexInstallRecords.mockResolvedValueOnce(postDoctorRecords);
+    syncPluginsForUpdateChannel.mockImplementationOnce(
+      async (params: { config?: OpenClawConfig }) => ({
+        changed: true,
+        config: params.config ?? baseConfig,
+        summary: {
+          switchedToBundled: [],
+          switchedToNpm: [],
+          warnings: [],
+          errors: [],
+        },
+      }),
+    );
+
+    await updateFinalizeCommand({ json: true, timeout: "9", restart: false });
+
+    expect(doctorCommand).toHaveBeenCalledWith(defaultRuntime, {
+      nonInteractive: true,
+      repair: true,
+      yes: false,
+    });
+    expect(syncPluginCall()?.channel).toBe("beta");
+    expect(syncPluginCall()?.config).toEqual({
+      ...postDoctorConfig,
+      plugins: {
+        ...postDoctorConfig.plugins,
+        installs: postDoctorRecords,
+      },
+    });
+    expect(lastReplaceConfigCall()?.baseHash).toBe("post-doctor");
+    expect(vi.mocked(doctorCommand).mock.invocationCallOrder[0] ?? 0).toBeLessThan(
+      loadInstalledPluginIndexInstallRecords.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect((lastWriteJsonCall() as { channel?: string } | undefined)?.channel).toBe("beta");
+  });
+
+  it("updateFinalizeCommand reapplies requested channel against post-doctor config", async () => {
+    const preDoctorConfig = { update: { channel: "stable" } } as OpenClawConfig;
+    const postDoctorConfig = { update: { channel: "beta" } } as OpenClawConfig;
+    const preDoctorSnapshot: ConfigFileSnapshot = {
+      ...baseSnapshot,
+      sourceConfig: preDoctorConfig,
+      resolved: preDoctorConfig,
+      runtimeConfig: preDoctorConfig,
+      config: preDoctorConfig,
+      hash: "pre-doctor",
+    };
+    const postDoctorSnapshot: ConfigFileSnapshot = {
+      ...baseSnapshot,
+      sourceConfig: postDoctorConfig,
+      resolved: postDoctorConfig,
+      runtimeConfig: postDoctorConfig,
+      config: postDoctorConfig,
+      hash: "post-doctor",
+    };
+    vi.mocked(readConfigFileSnapshot)
+      .mockResolvedValueOnce(preDoctorSnapshot)
+      .mockResolvedValueOnce(postDoctorSnapshot);
+
+    await updateFinalizeCommand({ channel: "dev", json: true, restart: false });
+
+    expect(replaceConfigCall(0)?.baseHash).toBe("pre-doctor");
+    expect(replaceConfigCall(0)?.nextConfig).toEqual({ update: { channel: "dev" } });
+    expect(replaceConfigCall(1)?.baseHash).toBe("post-doctor");
+    expect(replaceConfigCall(1)?.nextConfig).toEqual({ update: { channel: "dev" } });
+    expect(syncPluginCall()?.channel).toBe("dev");
+    expect((lastWriteJsonCall() as { channel?: string } | undefined)?.channel).toBe("dev");
   });
 
   it.each([

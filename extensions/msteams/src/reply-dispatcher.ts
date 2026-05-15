@@ -463,6 +463,32 @@ export function createMSTeamsReplyDispatcher(params: {
             }),
           );
         },
+        onPatchSummary: async (payload: PipelinePayload) => {
+          if (payload?.phase !== "end") {
+            return;
+          }
+          await streamController.pushProgressLine(
+            buildChannelProgressDraftLine({
+              event: "patch",
+              phase: payload.phase as string,
+              ...(typeof payload?.title === "string" ? { title: payload.title } : {}),
+              ...(typeof payload?.name === "string" ? { name: payload.name } : {}),
+              ...(Array.isArray(payload?.added) &&
+              payload.added.every((s: unknown) => typeof s === "string")
+                ? { added: payload.added }
+                : {}),
+              ...(Array.isArray(payload?.modified) &&
+              payload.modified.every((s: unknown) => typeof s === "string")
+                ? { modified: payload.modified }
+                : {}),
+              ...(Array.isArray(payload?.deleted) &&
+              payload.deleted.every((s: unknown) => typeof s === "string")
+                ? { deleted: payload.deleted }
+                : {}),
+              ...(typeof payload?.summary === "string" ? { summary: payload.summary } : {}),
+            }),
+          );
+        },
       }
     : {};
 

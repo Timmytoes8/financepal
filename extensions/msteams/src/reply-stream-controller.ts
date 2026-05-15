@@ -3,6 +3,8 @@ import {
   type ChannelProgressDraftLine,
   formatChannelProgressDraftText,
   isChannelProgressDraftWorkToolName,
+  mergeChannelProgressDraftLine,
+  normalizeChannelProgressDraftLineIdentity,
   resolveChannelPreviewStreamMode,
   resolveChannelProgressDraftLabel,
   resolveChannelProgressDraftMaxLines,
@@ -88,7 +90,7 @@ export function createTeamsReplyStreamController(params: {
   // Matches the pre-migration `TeamsHttpStream.hasContent → false` recovery.
   let streamFailed = false;
   let lastInformativeText = "";
-  let progressLines: string[] = [];
+  let progressLines: Array<string | ChannelProgressDraftLine> = [];
   // openclaw's reply pipeline calls onPartialReply with the cumulative text on
   // each chunk, but the SDK's HttpStream appends each emit() to its internal
   // text buffer (this.text += activity.text). Forwarding cumulative text into
@@ -233,17 +235,13 @@ export function createTeamsReplyStreamController(params: {
         return;
       }
       if (shouldStreamPreviewToolProgress) {
-        // Accept both plain strings and the structured `ChannelProgressDraftLine`
-        // shape that `buildChannelProgressDraftLine[ForEntry]` returns; normalize
-        // to the trimmed text so the dedupe + max-lines policy stays simple.
-        const normalized = normalizeProgressLineIdentity(line);
+        const normalized = normalizeChannelProgressDraftLineIdentity(line);
         if (normalized) {
-          const previous = progressLines.at(-1);
-          if (previous !== normalized) {
-            progressLines = [...progressLines, normalized].slice(
-              -resolveChannelProgressDraftMaxLines(params.msteamsConfig),
-            );
-          }
+          const progressLine: string | ChannelProgressDraftLine =
+            typeof line === "object" && line !== undefined ? line : normalized;
+          progressLines = mergeChannelProgressDraftLine(progressLines, progressLine, {
+            maxLines: resolveChannelProgressDraftMaxLines(params.msteamsConfig),
+          });
         }
       }
       const hadStarted = progressDraftGate.hasStarted;
@@ -354,11 +352,4 @@ export function createTeamsReplyStreamController(params: {
 
     wasCanceled,
   };
-}
-
-function normalizeProgressLineIdentity(
-  line: string | ChannelProgressDraftLine | undefined,
-): string {
-  const text = typeof line === "string" ? line : line?.text;
-  return text?.replace(/\s+/g, " ").trim() ?? "";
 }

@@ -2259,18 +2259,15 @@ function resolveOpenClawCodingToolsSessionKeys(
   };
 }
 
-async function buildDynamicTools(input: DynamicToolBuildParams) {
+function buildOpenClawCodingToolsOptions(
+  input: DynamicToolBuildParams,
+): OpenClawCodingToolsOptions {
   const { params } = input;
-  if (params.disableTools || !supportsModelTools(params.model)) {
-    return [];
-  }
   const modelHasVision = params.model.input?.includes("image") ?? false;
   const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, input.sessionAgentId);
-  const createOpenClawCodingTools =
-    openClawCodingToolsFactoryForTests ??
-    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
   const sessionKeys = resolveOpenClawCodingToolsSessionKeys(params, input.sandboxSessionKey);
-  const allTools = createOpenClawCodingTools({
+
+  return {
     agentId: input.sessionAgentId,
     ...buildEmbeddedAttemptToolRunContext(params),
     exec: {
@@ -2337,10 +2334,22 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
       });
       input.runAbortController.abort("sessions_yield");
     },
-  });
+  };
+}
+
+async function buildDynamicTools(input: DynamicToolBuildParams) {
+  const { params } = input;
+  if (params.disableTools || !supportsModelTools(params.model)) {
+    return [];
+  }
+  const createOpenClawCodingTools =
+    openClawCodingToolsFactoryForTests ??
+    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
+  const toolOptions = buildOpenClawCodingToolsOptions(input);
+  const allTools = createOpenClawCodingTools(toolOptions);
   const codexFilteredTools = filterCodexDynamicTools(allTools, input.pluginConfig);
   const visionFilteredTools = filterToolsForVisionInputs(codexFilteredTools, {
-    modelHasVision,
+    modelHasVision: toolOptions.modelHasVision ?? false,
     hasInboundImages: (params.images?.length ?? 0) > 0,
   });
   const toolsAllow = includeForcedMessageToolAllow(params.toolsAllow, params);
@@ -3282,6 +3291,7 @@ export const __testing = {
   createCodexSteeringQueue,
   buildCodexNativeHookRelayId,
   filterCodexDynamicTools,
+  buildOpenClawCodingToolsOptions,
   buildDynamicTools,
   filterCodexDynamicToolsForAllowlist,
   filterToolsForVisionInputs,

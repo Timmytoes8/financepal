@@ -810,7 +810,7 @@ describe("runCodexAppServerAttempt", () => {
     }
   });
 
-  it("passes auth profiles into Codex dynamic tool construction", async () => {
+  it("passes auth profiles into Codex dynamic tool construction", () => {
     const sessionFile = path.join(tempDir, "session.jsonl");
     const workspaceDir = path.join(tempDir, "workspace");
     const params = createParams(sessionFile, workspaceDir);
@@ -827,13 +827,7 @@ describe("runCodexAppServerAttempt", () => {
     params.disableTools = false;
     params.authProfileStore = authProfileStore;
 
-    const factoryOptions: unknown[] = [];
-    __testing.setOpenClawCodingToolsFactoryForTests((options) => {
-      factoryOptions.push(options);
-      return [];
-    });
-
-    await __testing.buildDynamicTools({
+    const toolOptions = __testing.buildOpenClawCodingToolsOptions({
       params,
       resolvedWorkspace: workspaceDir,
       effectiveWorkspace: workspaceDir,
@@ -845,10 +839,7 @@ describe("runCodexAppServerAttempt", () => {
       onYieldDetected: () => undefined,
     });
 
-    expect(factoryOptions).toHaveLength(1);
-    expect((factoryOptions[0] as { authProfileStore?: unknown }).authProfileStore).toBe(
-      authProfileStore,
-    );
+    expect(toolOptions.authProfileStore).toBe(authProfileStore);
   });
 
   it("normalizes Codex dynamic toolsAllow entries before filtering", () => {

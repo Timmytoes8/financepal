@@ -539,7 +539,7 @@ describe("runHeartbeatOnce commitments", () => {
         stableSchedulerSeed: "commitment-default-session",
       });
 
-      requestHeartbeatNow({ reason: "manual", coalesceMs: 0 });
+      requestHeartbeat({ source: "manual", intent: "manual", reason: "manual", coalesceMs: 0 });
       await vi.advanceTimersByTimeAsync(1);
       await vi.waitFor(() => {
         expect(runOnce).toHaveBeenCalledTimes(2);

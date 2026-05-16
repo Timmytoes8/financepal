@@ -12,7 +12,7 @@ export type RetryingPromiseParams<T> = {
 
 function retryDecisionSchedule(
   params: Pick<RetryingPromiseParams<unknown>, "maxAttempts" | "shouldRetry">,
-): Schedule.Schedule<number, unknown> {
+): Schedule.Schedule<number> {
   return Schedule.makeWithState(1, (now, error, attemptNumber) => {
     const shouldRetry =
       attemptNumber < params.maxAttempts && params.shouldRetry(error, attemptNumber);
@@ -28,7 +28,7 @@ function retryDecisionSchedule(
 
 function runAttempt<T>(
   params: RetryingPromiseParams<T>,
-  retryDriver: Schedule.ScheduleDriver<number, unknown>,
+  retryDriver: Schedule.ScheduleDriver<number>,
 ): OpenClawEffect<T, unknown> {
   return Effect.suspend(() =>
     promiseEffect({

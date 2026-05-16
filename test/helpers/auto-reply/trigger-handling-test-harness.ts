@@ -70,6 +70,11 @@ installPiEmbeddedMock();
 
 vi.doMock("../../../src/agents/pi-embedded-runner/runs.js", () => ({
   abortEmbeddedPiRun: (...args: unknown[]) => piEmbeddedMocks.abortEmbeddedPiRun(...args),
+  resolveActiveEmbeddedRunSessionId: (...args: unknown[]) =>
+    piEmbeddedMocks.resolveActiveEmbeddedRunSessionId(...args),
+  isEmbeddedPiRunActive: (...args: unknown[]) => piEmbeddedMocks.isEmbeddedPiRunActive(...args),
+  isEmbeddedPiRunStreaming: (...args: unknown[]) =>
+    piEmbeddedMocks.isEmbeddedPiRunStreaming(...args),
   formatEmbeddedPiQueueFailureSummary: (outcome: { reason?: string; sessionId?: string }) =>
     outcome.reason && outcome.sessionId
       ? `queue_message_failed reason=${outcome.reason} sessionId=${outcome.sessionId} gatewayHealth=live`

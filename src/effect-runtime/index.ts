@@ -23,7 +23,7 @@ export function syncEffect<A, E = unknown>(params: {
 }
 
 export async function runOpenClawEffect<A, E>(
-  effect: OpenClawEffect<A, E, never>,
+  effect: OpenClawEffect<A, E>,
 ): Promise<A> {
   const result = await Effect.runPromise(Effect.either(effect));
   if (Either.isLeft(result)) {
@@ -32,7 +32,7 @@ export async function runOpenClawEffect<A, E>(
   return result.right;
 }
 
-export function runOpenClawEffectSync<A, E>(effect: OpenClawEffect<A, E, never>): A {
+export function runOpenClawEffectSync<A, E>(effect: OpenClawEffect<A, E>): A {
   const result = Effect.runSync(Effect.either(effect));
   if (Either.isLeft(result)) {
     throw result.left;

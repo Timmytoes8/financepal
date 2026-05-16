@@ -255,8 +255,8 @@ export async function executeProviderOperationWithRetry<T>(params: {
     resolveDelayMs: (attemptNumber) =>
       retryOptions ? resolveTransientProviderDelayMs(retryOptions, attemptNumber) : 0,
     sleep: async (delayMs) => {
-      const sleep = retryOptions.sleep ?? sleepWithAbort;
-      await sleep(delayMs, retryOptions.signal);
+      const sleep = retryOptions?.sleep ?? sleepWithAbort;
+      await sleep(delayMs, retryOptions?.signal);
     },
   });
 }

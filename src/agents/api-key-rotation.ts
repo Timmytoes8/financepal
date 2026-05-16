@@ -67,7 +67,7 @@ export async function executeWithApiKeyRotation<T>(
 
   let lastError: unknown;
   const transientRetry = resolveTransientProviderRetryOptions(params.transientRetry);
-  keyLoop: for (let apiKeyIndex = 0; apiKeyIndex < keys.length; apiKeyIndex += 1) {
+  for (let apiKeyIndex = 0; apiKeyIndex < keys.length; apiKeyIndex += 1) {
     const apiKey = keys[apiKeyIndex];
     const maxOperationAttempts = resolveTransientProviderAttempts(transientRetry);
     try {
@@ -126,7 +126,7 @@ export async function executeWithApiKeyRotation<T>(
         continue;
       }
       lastError = error;
-      break keyLoop;
+      break;
     }
   }
 

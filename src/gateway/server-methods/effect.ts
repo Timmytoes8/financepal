@@ -1,10 +1,12 @@
 import { runOpenClawEffect, type OpenClawEffect } from "../../effect-runtime/index.js";
-import { ErrorCodes, errorShape, type ErrorCode, type ErrorShape } from "../protocol/index.js";
+import { ErrorCodes, errorShape, type ErrorShape } from "../protocol/index.js";
 import type { RespondFn } from "./types.js";
+
+type GatewayEffectErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
 
 export class GatewayMethodEffectError extends Error {
   constructor(
-    readonly code: ErrorCode,
+    readonly code: GatewayEffectErrorCode,
     message: string,
     readonly opts?: { details?: unknown; retryable?: boolean; retryAfterMs?: number },
   ) {
@@ -29,7 +31,7 @@ function shapeGatewayMethodError(error: unknown): ErrorShape {
 
 export async function respondWithGatewayEffect<T>(params: {
   respond: RespondFn;
-  effect: OpenClawEffect<T, unknown, never>;
+  effect: OpenClawEffect<T, unknown>;
   meta?: Record<string, unknown>;
 }): Promise<void> {
   try {

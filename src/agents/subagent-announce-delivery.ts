@@ -57,7 +57,11 @@ import type { SpawnSubagentMode } from "./subagent-spawn.types.js";
 
 const DEFAULT_SUBAGENT_ANNOUNCE_TIMEOUT_MS = 120_000;
 const MAX_TIMER_SAFE_TIMEOUT_MS = 2_147_000_000;
-const AGENT_MEDIATED_COMPLETION_TOOLS = new Set(["music_generate", "video_generate"]);
+const AGENT_MEDIATED_COMPLETION_TOOLS = new Set([
+  "image_generate",
+  "music_generate",
+  "video_generate",
+]);
 
 type SubagentAnnounceDeliveryDeps = {
   dispatchGatewayMethodInProcess: typeof dispatchGatewayMethodInProcess;
@@ -629,7 +633,8 @@ async function sendSubagentAnnounceDirectly(params: {
       expectsCompletionMessage: params.expectsCompletionMessage,
       sourceTool: params.sourceTool,
     });
-    const requiresMessageToolDelivery = agentMediatedCompletion;
+    const expectedMediaUrls = collectExpectedMediaFromInternalEvents(params.internalEvents);
+    const requiresMessageToolDelivery = agentMediatedCompletion && expectedMediaUrls.length > 0;
     const completionSourceReplyDeliveryMode = requiresMessageToolDelivery
       ? "message_tool_only"
       : undefined;
@@ -762,7 +767,6 @@ async function sendSubagentAnnounceDirectly(params: {
         error: "completion agent did not deliver through the message tool",
       };
     }
-    const expectedMediaUrls = collectExpectedMediaFromInternalEvents(params.internalEvents);
     if (
       agentMediatedCompletion &&
       expectedMediaUrls.length > 0 &&

@@ -214,11 +214,11 @@ describe("config shared auth disconnects", () => {
       },
       tools: {
         elevated: {
-          allowFrom: ["webchat:admin"],
+          allowFrom: { webchat: ["admin"] },
         },
       },
       agents: {
-        list: [{ id: "ops", directory: "/tmp/ops" }],
+        list: [{ id: "ops", workspace: "/tmp/ops" }],
       },
       channels: {
         whatsapp: {

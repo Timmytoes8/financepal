@@ -1568,14 +1568,14 @@ describe("config io write", () => {
 
   it("rejects stale runtime writes that reintroduce channel allowlists", async () => {
     await withSuiteHome(async (home) => {
-      mockChannelPluginManifestRegistry("whatsapp");
+      mockChannelPluginManifestRegistry("discord");
       const configPath = path.join(home, ".openclaw", "openclaw.json");
       await fs.mkdir(path.dirname(configPath), { recursive: true });
       const original = {
         meta: { lastTouchedVersion: "2026.5.17" },
         gateway: { mode: "local" },
         channels: {
-          whatsapp: {
+          discord: {
             enabled: true,
             dm: {},
           },
@@ -1584,7 +1584,7 @@ describe("config io write", () => {
       const staleRuntime = {
         ...original,
         channels: {
-          whatsapp: {
+          discord: {
             enabled: true,
             allowFrom: ["*"],
             dm: {
@@ -1618,8 +1618,8 @@ describe("config io write", () => {
       await expect(io.writeConfigFile(staleRuntime, { baseSnapshot })).rejects.toMatchObject({
         code: "CONFIG_WRITE_REJECTED",
         reasons: expect.arrayContaining([
-          "protected-list-widened:channels.whatsapp.allowFrom",
-          "protected-list-widened:channels.whatsapp.dm.allowFrom",
+          "protected-list-widened:channels.discord.allowFrom",
+          "protected-list-widened:channels.discord.dm.allowFrom",
         ]),
       });
       await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(originalRaw);
@@ -1703,12 +1703,13 @@ describe("config io write", () => {
             },
           },
         },
-      } as unknown as ConfigFileSnapshot["config"];
+      } as OpenClawConfig;
+      const runtimeOriginal = original as ConfigFileSnapshot["config"];
       const next = {
         meta: original.meta,
         gateway: { mode: "local" },
         channels: {},
-      } satisfies ConfigFileSnapshot["config"];
+      } satisfies OpenClawConfig;
       const originalRaw = `${JSON.stringify(original, null, 2)}\n`;
       await fs.writeFile(configPath, originalRaw, "utf-8");
       const io = createConfigIO({
@@ -1721,11 +1722,11 @@ describe("config io write", () => {
         exists: true,
         raw: originalRaw,
         parsed: original,
-        sourceConfig: original,
-        resolved: original,
+        sourceConfig: original as ConfigFileSnapshot["sourceConfig"],
+        resolved: original as ConfigFileSnapshot["resolved"],
         valid: true,
-        runtimeConfig: original,
-        config: original,
+        runtimeConfig: runtimeOriginal,
+        config: runtimeOriginal,
         issues: [],
         warnings: [],
         legacyIssues: [],

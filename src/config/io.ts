@@ -801,6 +801,14 @@ function appendChannelProtectedPolicyChangeReasons(params: {
       const channelPath = ["channels", channelId] as const;
       const previousChannel = isRecord(previousChannels) ? previousChannels[channelId] : undefined;
       if (!isRecord(previousChannel)) {
+        appendNestedProtectedListChangeReasons({
+          previousConfig: params.previousConfig,
+          nextConfig: params.nextConfig,
+          path: channelPath,
+          protectedKeys: protectedChannelAllowlistKeys,
+          explicitSetPaths: params.explicitSetPaths,
+          reasons: params.reasons,
+        });
         if (
           nextChannel.enabled !== false &&
           !isExplicitChannelActivationPath(channelPath, params.explicitSetPaths)

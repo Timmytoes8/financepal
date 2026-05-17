@@ -1284,6 +1284,76 @@ describe("config io write", () => {
     });
   });
 
+  it("rejects stale runtime writes that stage broad allowlists on disabled channel scopes", async () => {
+    await withSuiteHome(async (home) => {
+      mockChannelPluginManifestRegistry("whatsapp");
+      const configPath = path.join(home, ".openclaw", "openclaw.json");
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      const original = {
+        meta: { lastTouchedVersion: "2026.5.17" },
+        gateway: { mode: "local" },
+        channels: {},
+      } satisfies ConfigFileSnapshot["config"];
+      const staleRuntime = {
+        ...original,
+        channels: {
+          whatsapp: {
+            enabled: false,
+            allowFrom: ["*"],
+            accounts: {
+              default: {
+                enabled: false,
+                allowFrom: ["*"],
+              },
+            },
+          },
+        },
+      } satisfies ConfigFileSnapshot["config"];
+      const originalRaw = `${JSON.stringify(original, null, 2)}\n`;
+      await fs.writeFile(configPath, originalRaw, "utf-8");
+      const io = createConfigIO({
+        env: { VITEST: "true" } as NodeJS.ProcessEnv,
+        homedir: () => home,
+        logger: silentLogger,
+      });
+      const baseSnapshot = {
+        path: configPath,
+        exists: true,
+        raw: originalRaw,
+        parsed: original,
+        sourceConfig: original,
+        resolved: original,
+        valid: true,
+        runtimeConfig: original,
+        config: original,
+        issues: [],
+        warnings: [],
+        legacyIssues: [],
+      } satisfies ConfigFileSnapshot;
+
+      await expect(io.writeConfigFile(staleRuntime, { baseSnapshot })).rejects.toMatchObject({
+        code: "CONFIG_WRITE_REJECTED",
+        reasons: expect.arrayContaining([
+          "protected-list-widened:channels.whatsapp.allowFrom",
+          "protected-list-widened:channels.whatsapp.accounts.default.allowFrom",
+        ]),
+      });
+      await expect(
+        io.writeConfigFile(staleRuntime, {
+          baseSnapshot,
+          explicitSetPaths: [["channels", "whatsapp", "enabled"]],
+        }),
+      ).rejects.toMatchObject({
+        code: "CONFIG_WRITE_REJECTED",
+        reasons: expect.arrayContaining([
+          "protected-list-widened:channels.whatsapp.allowFrom",
+          "protected-list-widened:channels.whatsapp.accounts.default.allowFrom",
+        ]),
+      });
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(originalRaw);
+    });
+  });
+
   it("rejects stale runtime writes that remove enabled channel blocks without allowlists", async () => {
     await withSuiteHome(async (home) => {
       mockChannelPluginManifestRegistry("whatsapp");

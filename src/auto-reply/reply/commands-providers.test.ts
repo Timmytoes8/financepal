@@ -64,6 +64,12 @@ describe("handleProvidersCommand", () => {
     expect(result).toBeNull();
   });
 
+  it("does not allow typed provider dashboard when text commands are disabled", async () => {
+    const result = await handleProvidersCommand(buildTelegramCommandParams("/providers"), false);
+
+    expect(result).toBeNull();
+  });
+
   it("uses the originating Telegram chat instead of native slash targets", async () => {
     const params = buildTelegramCommandParams("/providers start");
     params.ctx.OriginatingTo = "telegram:owner-dm";

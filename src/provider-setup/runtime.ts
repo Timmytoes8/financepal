@@ -6,8 +6,14 @@ import type { ReplyPayload } from "../auto-reply/types.js";
 import { resolveChannelConfigWrites } from "../channels/plugins/config-writes.js";
 import { updateConfig } from "../commands/models/shared.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { applyDefaultModel, pickAuthMethod } from "../plugins/provider-auth-choice-helpers.js";
+import { enablePluginInConfig } from "../plugins/enable.js";
+import {
+  applyDefaultModel,
+  pickAuthMethod,
+  restoreConfiguredPrimaryModel,
+} from "../plugins/provider-auth-choice-helpers.js";
 import { runProviderPluginAuthMethod } from "../plugins/provider-auth-choice.js";
+import { runProviderModelSelectedHook } from "../plugins/provider-wizard.js";
 import { resolvePluginProviders } from "../plugins/providers.runtime.js";
 import { resolvePluginSetupRegistry } from "../plugins/setup-registry.js";
 import type { ProviderAuthMethod, ProviderPlugin } from "../plugins/types.js";
@@ -26,6 +32,7 @@ type ProviderSetupSessionRecord = {
   session: WizardSession;
   binding: ProviderSetupBinding;
   callbackIds: Set<string>;
+  expiresAt: number;
   lastStep?: WizardStep;
 };
 
@@ -37,7 +44,7 @@ type ProviderSetupCallback =
 
 type StoredProviderSetupCallback = {
   callback: ProviderSetupCallback;
-  expiresAt?: number;
+  expiresAt: number;
 };
 
 export type ProviderSetupCommandParams = {
@@ -61,7 +68,7 @@ export type ProviderSetupTextInputResult = {
 };
 
 const PROVIDER_SETUP_COMMAND = "/providers";
-const LOOSE_CALLBACK_TTL_MS = 10 * 60 * 1000;
+const PROVIDER_SETUP_INTERACTION_TTL_MS = 10 * 60 * 1000;
 const sessions = new Map<string, ProviderSetupSessionRecord>();
 const callbacks = new Map<string, StoredProviderSetupCallback>();
 
@@ -88,24 +95,46 @@ function storeCallback(
   callback: ProviderSetupCallback,
 ): string {
   const id = randomUUID().replaceAll("-", "").slice(0, 16);
-  callbacks.set(id, { callback });
+  callbacks.set(id, { callback, expiresAt: record.expiresAt });
   record.callbackIds.add(id);
   return `${PROVIDER_SETUP_COMMAND} c ${id}`;
 }
 
 function storeLooseCallback(callback: ProviderSetupCallback): string {
-  pruneExpiredLooseCallbacks(Date.now());
+  pruneExpiredProviderSetupState(Date.now());
   const id = randomUUID().replaceAll("-", "").slice(0, 16);
-  callbacks.set(id, { callback, expiresAt: Date.now() + LOOSE_CALLBACK_TTL_MS });
+  callbacks.set(id, { callback, expiresAt: Date.now() + PROVIDER_SETUP_INTERACTION_TTL_MS });
   return `${PROVIDER_SETUP_COMMAND} c ${id}`;
 }
 
-function pruneExpiredLooseCallbacks(now: number) {
+function clearSessionCallbacks(record: ProviderSetupSessionRecord) {
+  for (const id of record.callbackIds) {
+    callbacks.delete(id);
+  }
+  record.callbackIds.clear();
+}
+
+function expireSession(sessionId: string, record: ProviderSetupSessionRecord) {
+  record.session.cancel();
+  sessions.delete(sessionId);
+  clearSessionCallbacks(record);
+}
+
+function pruneExpiredProviderSetupState(now: number) {
   for (const [id, stored] of callbacks) {
-    if (stored.expiresAt !== undefined && stored.expiresAt <= now) {
+    if (stored.expiresAt <= now) {
       callbacks.delete(id);
     }
   }
+  for (const [sessionId, record] of sessions) {
+    if (record.expiresAt <= now) {
+      expireSession(sessionId, record);
+    }
+  }
+}
+
+function refreshSessionExpiry(record: ProviderSetupSessionRecord) {
+  record.expiresAt = Date.now() + PROVIDER_SETUP_INTERACTION_TTL_MS;
 }
 
 function buildSessionButton(
@@ -114,13 +143,6 @@ function buildSessionButton(
   callback: ProviderSetupCallback,
 ) {
   return buildCommandButton(label, storeCallback(record, callback));
-}
-
-function clearSessionCallbacks(record: ProviderSetupSessionRecord) {
-  for (const id of record.callbackIds) {
-    callbacks.delete(id);
-  }
-  record.callbackIds.clear();
 }
 
 function providerSetupChannelData(
@@ -165,10 +187,10 @@ function listSetupProviders(params: {
   const setupProviders = resolvePluginSetupRegistry({
     config: params.config,
     workspaceDir: params.workspaceDir,
-  }).providers.map((entry) => entry.provider);
+  }).providers.map((entry) => ({ ...entry.provider, pluginId: entry.pluginId }));
   const byId = new Map<string, ProviderPlugin>();
   for (const provider of [...providers, ...setupProviders]) {
-    if (provider.auth.length > 0) {
+    if (provider.auth.length > 0 && isProviderPluginAllowed(params.config, provider)) {
       byId.set(provider.id, provider);
     }
   }
@@ -189,6 +211,24 @@ function resolveAuthMethod(provider: ProviderPlugin, methodId: string): Provider
     throw new Error("Auth method no longer available.");
   }
   return method;
+}
+
+function applyProviderPluginEnablement(cfg: OpenClawConfig, provider: ProviderPlugin) {
+  if (!provider.pluginId) {
+    return cfg;
+  }
+  const result = enablePluginInConfig(cfg, provider.pluginId);
+  if (!result.enabled) {
+    throw new Error(`${provider.label} plugin is ${result.reason ?? "disabled"}.`);
+  }
+  return result.config;
+}
+
+function isProviderPluginAllowed(cfg: OpenClawConfig, provider: ProviderPlugin): boolean {
+  if (!provider.pluginId) {
+    return true;
+  }
+  return enablePluginInConfig(cfg, provider.pluginId).enabled;
 }
 
 function makeProviderSetupRunner(params: {
@@ -234,8 +274,9 @@ function makeProviderSetupRunner(params: {
     if (!proceed) {
       throw new WizardCancelledError("cancelled");
     }
+    const enabledConfig = applyProviderPluginEnablement(params.cfg, provider);
     const applied = await runProviderPluginAuthMethod({
-      config: params.cfg,
+      config: enabledConfig,
       runtime: defaultRuntime,
       prompter,
       method,
@@ -248,7 +289,10 @@ function makeProviderSetupRunner(params: {
         await prompter.note(url, "Open provider login URL");
       },
     });
-    let applyToConfig = applied.applyToConfig;
+    const applyProviderAuthConfig = (cfg: OpenClawConfig) =>
+      applied.applyToConfig(applyProviderPluginEnablement(cfg, provider));
+    let applyToConfig = async (cfg: OpenClawConfig) =>
+      restoreConfiguredPrimaryModel(applyProviderAuthConfig(cfg), cfg);
     let defaultModel: string | undefined;
     if (applied.defaultModel) {
       const setDefault = await prompter.confirm({
@@ -257,8 +301,17 @@ function makeProviderSetupRunner(params: {
       });
       if (setDefault) {
         const selectedDefaultModel = applied.defaultModel;
-        applyToConfig = (cfg) =>
-          applyDefaultModel(applied.applyToConfig(cfg), selectedDefaultModel);
+        applyToConfig = async (cfg) => {
+          const nextConfig = applyDefaultModel(applyProviderAuthConfig(cfg), selectedDefaultModel);
+          await runProviderModelSelectedHook({
+            config: nextConfig,
+            model: selectedDefaultModel,
+            prompter,
+            agentDir: params.agentDir,
+            workspaceDir: params.workspaceDir,
+          });
+          return nextConfig;
+        };
         defaultModel = applied.defaultModel;
       }
     }
@@ -428,10 +481,12 @@ async function renderNext(
     };
   }
   record.lastStep = result.step;
+  refreshSessionExpiry(record);
   return renderStep(sessionId, record, result.step);
 }
 
 async function answerSession(sessionId: string, value: unknown): Promise<ReplyPayload> {
+  pruneExpiredProviderSetupState(Date.now());
   const record = sessions.get(sessionId);
   if (!record) {
     return {
@@ -449,6 +504,7 @@ async function answerSession(sessionId: string, value: unknown): Promise<ReplyPa
 }
 
 function cancelSession(sessionId: string): ReplyPayload {
+  pruneExpiredProviderSetupState(Date.now());
   const record = sessions.get(sessionId);
   if (record) {
     record.session.cancel();
@@ -489,6 +545,7 @@ async function startSession(params: ProviderSetupCommandParams, binding: Provide
     session,
     binding,
     callbackIds: new Set<string>(),
+    expiresAt: Date.now() + PROVIDER_SETUP_INTERACTION_TTL_MS,
   } satisfies ProviderSetupSessionRecord;
   sessions.set(id, record);
   return renderNext(id, record);
@@ -499,8 +556,9 @@ async function handleStoredCallback(
   params: ProviderSetupCommandParams,
   binding: ProviderSetupBinding,
 ): Promise<ReplyPayload> {
+  pruneExpiredProviderSetupState(Date.now());
   const stored = callbacks.get(callbackId);
-  if (!stored || (stored.expiresAt !== undefined && stored.expiresAt <= Date.now())) {
+  if (!stored) {
     callbacks.delete(callbackId);
     return {
       text: "Provider setup expired. Start again with /providers.",
@@ -583,6 +641,7 @@ export async function submitProviderSetupTextInput(params: {
   senderId?: string;
   text: string;
 }): Promise<ProviderSetupTextInputResult> {
+  pruneExpiredProviderSetupState(Date.now());
   const binding: ProviderSetupBinding = {
     channel: params.channel,
     ...(params.accountId ? { accountId: params.accountId } : {}),

@@ -16,8 +16,10 @@ import { enablePluginInConfig } from "./enable.js";
 import {
   applyProviderAuthConfigPatch,
   applyDefaultModel,
+  buildMinimalProviderAuthConfigPatch,
   pickAuthMethod,
   resolveProviderMatch,
+  restoreConfiguredPrimaryModel,
 } from "./provider-auth-choice-helpers.js";
 import {
   resolveManifestProviderAuthChoice,
@@ -66,38 +68,6 @@ function formatModelRefForDisplay(modelRef: string, provider: ProviderPlugin): s
     return modelRef;
   }
   return formatLiteralProviderPrefixedModelRef(provider.id, modelRef);
-}
-
-function restoreConfiguredPrimaryModel(
-  nextConfig: OpenClawConfig,
-  originalConfig: OpenClawConfig,
-): OpenClawConfig {
-  const originalModel = originalConfig.agents?.defaults?.model;
-  const nextAgents = nextConfig.agents;
-  const nextDefaults = nextAgents?.defaults;
-  if (!nextDefaults) {
-    return nextConfig;
-  }
-  if (originalModel !== undefined) {
-    return {
-      ...nextConfig,
-      agents: {
-        ...nextAgents,
-        defaults: {
-          ...nextDefaults,
-          model: originalModel,
-        },
-      },
-    };
-  }
-  const { model: _model, ...restDefaults } = nextDefaults;
-  return {
-    ...nextConfig,
-    agents: {
-      ...nextAgents,
-      defaults: restDefaults,
-    },
-  };
 }
 
 function resolveConfiguredDefaultModelPrimary(cfg: OpenClawConfig): string | undefined {
@@ -300,7 +270,7 @@ export async function runProviderPluginAuthMethod(params: {
       agentDir,
     });
   }
-  const applyToConfig = buildProviderAuthConfigUpdate(result);
+  const applyToConfig = buildProviderAuthConfigUpdate(result, params.config);
   const nextConfig = applyToConfig(params.config);
 
   if (params.emitNotes !== false && result.notes && result.notes.length > 0) {
@@ -318,7 +288,10 @@ export async function runProviderPluginAuthMethod(params: {
   };
 }
 
-function buildProviderAuthConfigUpdate(result: ProviderAuthMethodResult): ProviderAuthConfigUpdate {
+function buildProviderAuthConfigUpdate(
+  result: ProviderAuthMethodResult,
+  baseConfig: OpenClawConfig,
+): ProviderAuthConfigUpdate {
   const profileConfigs: ProviderAuthProfileConfig[] = result.profiles.map((profile) => ({
     profileId: profile.profileId,
     provider: profile.credential.provider,
@@ -330,10 +303,19 @@ function buildProviderAuthConfigUpdate(result: ProviderAuthMethodResult): Provid
       ? { displayName: profile.credential.displayName }
       : {}),
   }));
+  const configPatch = result.configPatch
+    ? buildMinimalProviderAuthConfigPatch({
+        baseConfig,
+        nextConfig: applyProviderAuthConfigPatch(baseConfig, result.configPatch, {
+          replaceDefaultModels: result.replaceDefaultModels,
+        }),
+        replaceDefaultModels: result.replaceDefaultModels,
+      })
+    : undefined;
   return (cfg) => {
     let nextConfig = cfg;
-    if (result.configPatch) {
-      nextConfig = applyProviderAuthConfigPatch(nextConfig, result.configPatch, {
+    if (configPatch) {
+      nextConfig = applyProviderAuthConfigPatch(nextConfig, configPatch, {
         replaceDefaultModels: result.replaceDefaultModels,
       });
     }

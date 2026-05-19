@@ -13,6 +13,7 @@ type AuthMockParams = {
 const resolvePluginProvidersMock = vi.hoisted(() => vi.fn());
 const resolvePluginSetupRegistryMock = vi.hoisted(() => vi.fn());
 const runProviderPluginAuthMethodMock = vi.hoisted(() => vi.fn());
+const runProviderModelSelectedHookMock = vi.hoisted(() => vi.fn());
 const updateConfigMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../plugins/providers.runtime.js", () => ({
@@ -25,6 +26,10 @@ vi.mock("../plugins/setup-registry.js", () => ({
 
 vi.mock("../plugins/provider-auth-choice.js", () => ({
   runProviderPluginAuthMethod: runProviderPluginAuthMethodMock,
+}));
+
+vi.mock("../plugins/provider-wizard.js", () => ({
+  runProviderModelSelectedHook: runProviderModelSelectedHookMock,
 }));
 
 vi.mock("../commands/models/shared.js", () => ({
@@ -48,6 +53,7 @@ const oauthMethod: ProviderAuthMethod = {
 function buildProvider(auth: ProviderAuthMethod[] = [apiKeyMethod]): ProviderPlugin {
   return {
     id: "test-provider",
+    pluginId: "test-provider",
     label: "Test Provider",
     auth,
   };
@@ -144,9 +150,17 @@ describe("Telegram provider setup runtime", () => {
       capturedSecret = await params.prompter.text({
         message: "Paste the API key",
         sensitive: true,
+        validate: (value) => (value.startsWith("sk-") ? undefined : "Invalid API key"),
       });
       const applyToConfig = (cfg: OpenClawConfig): OpenClawConfig => ({
         ...cfg,
+        agents: {
+          ...cfg.agents,
+          defaults: {
+            ...cfg.agents?.defaults,
+            model: { primary: "test-provider/model-a" },
+          },
+        },
         models: {
           ...cfg.models,
           providers: {
@@ -164,9 +178,10 @@ describe("Telegram provider setup runtime", () => {
         defaultModel: "test-provider/model-a",
       };
     });
+    runProviderModelSelectedHookMock.mockResolvedValue(undefined);
     updateConfigMock.mockImplementation(
-      async (mutator: (cfg: OpenClawConfig) => OpenClawConfig) => {
-        savedConfig = mutator(structuredClone(sourceConfig));
+      async (mutator: (cfg: OpenClawConfig) => OpenClawConfig | Promise<OpenClawConfig>) => {
+        savedConfig = await mutator(structuredClone(sourceConfig));
         return savedConfig;
       },
     );
@@ -216,6 +231,7 @@ describe("Telegram provider setup runtime", () => {
     expect(savedConfig?.models?.providers?.["test-provider"]?.baseUrl).toBe(
       "https://api.test-provider.example/v1",
     );
+    expect(savedConfig?.plugins?.entries?.["test-provider"]?.enabled).toBe(true);
   });
 
   it("renders an owner-only private dashboard", async () => {
@@ -241,6 +257,42 @@ describe("Telegram provider setup runtime", () => {
       await handleProviderSetupCommand(commandParams({ commandBody: "/providers" }));
 
       expect(__testing.providerSetupCallbackCount()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("expires abandoned text prompts before consuming later DMs", async () => {
+    vi.useFakeTimers();
+    try {
+      const { __testing, handleProviderSetupCommand, submitProviderSetupTextInput } =
+        await import("./runtime.js");
+
+      const chooseProvider = await handleProviderSetupCommand(
+        commandParams({ commandBody: "/providers start", cfg: sourceConfig }),
+      );
+      const confirmAuth = await handleProviderSetupCommand(
+        commandParams({ commandBody: callbackData(chooseProvider!, 0), cfg: sourceConfig }),
+      );
+      const secretPrompt = await handleProviderSetupCommand(
+        commandParams({ commandBody: callbackData(confirmAuth!, 0), cfg: sourceConfig }),
+      );
+
+      expect(secretPrompt?.text).toContain("Paste the API key");
+
+      vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+      const laterDm = await submitProviderSetupTextInput({
+        channel: "telegram",
+        accountId: "primary",
+        conversationId: "telegram:owner-dm",
+        senderId: "owner",
+        text: "normal later dm",
+      });
+
+      expect(laterDm).toEqual({ handled: false });
+      expect(capturedSecret).toBeUndefined();
+      expect(__testing.providerSetupSessionCount()).toBe(0);
+      expect(__testing.providerSetupCallbackCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }
@@ -276,9 +328,72 @@ describe("Telegram provider setup runtime", () => {
     expect(runProviderPluginAuthMethodMock).not.toHaveBeenCalled();
   });
 
+  it("does not run setup auth for provider plugins blocked by config policy", async () => {
+    const { handleProviderSetupCommand } = await import("./runtime.js");
+    resolvePluginProvidersMock.mockReturnValue([]);
+    resolvePluginSetupRegistryMock.mockReturnValue({
+      providers: [{ pluginId: "test-provider", provider }],
+      cliBackends: [],
+      configMigrations: [],
+      autoEnableProbes: [],
+      diagnostics: [],
+    });
+
+    const reply = await handleProviderSetupCommand(
+      commandParams({
+        commandBody: "/providers start",
+        cfg: {
+          ...sourceConfig,
+          plugins: { allow: ["other-provider"] },
+        },
+      }),
+    );
+
+    expect(reply?.text).toContain("No setup-capable model providers are available.");
+    expect(runProviderPluginAuthMethodMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps text prompts open after provider validation errors", async () => {
+    const { __testing, handleProviderSetupCommand, submitProviderSetupTextInput } =
+      await import("./runtime.js");
+
+    const chooseProvider = await handleProviderSetupCommand(
+      commandParams({ commandBody: "/providers start", cfg: sourceConfig }),
+    );
+    const confirmAuth = await handleProviderSetupCommand(
+      commandParams({ commandBody: callbackData(chooseProvider!, 0), cfg: sourceConfig }),
+    );
+    await handleProviderSetupCommand(
+      commandParams({ commandBody: callbackData(confirmAuth!, 0), cfg: sourceConfig }),
+    );
+
+    const invalid = await submitProviderSetupTextInput({
+      channel: "telegram",
+      accountId: "primary",
+      conversationId: "telegram:owner-dm",
+      senderId: "owner",
+      text: "not-a-key",
+    });
+
+    expect(invalid.handled).toBe(true);
+    expect(invalid.deleteInputMessage).toBe(true);
+    expect(invalid.reply?.text).toContain("Invalid API key");
+    expect(invalid.reply?.text).toContain("Paste the API key");
+    expect(capturedSecret).toBeUndefined();
+    expect(__testing.providerSetupSessionCount()).toBe(1);
+  });
+
   it("runs API-key setup through private text input and saves after confirmation", async () => {
     const { __testing, handleProviderSetupCommand, submitProviderSetupTextInput } =
       await import("./runtime.js");
+    runProviderModelSelectedHookMock.mockImplementationOnce(
+      async ({ config }: { config: OpenClawConfig }) => {
+        const providerConfig = config.models?.providers?.["test-provider"];
+        if (providerConfig) {
+          providerConfig.baseUrl = "https://hooked.test-provider.example/v1";
+        }
+      },
+    );
 
     const chooseProvider = await handleProviderSetupCommand(
       commandParams({ commandBody: "/providers start", cfg: sourceConfig }),
@@ -320,6 +435,17 @@ describe("Telegram provider setup runtime", () => {
     );
     expect(saved?.text).toContain("Test Provider is ready.");
     expect(savedConfig?.agents?.defaults?.model).toEqual({ primary: "test-provider/model-a" });
+    expect(savedConfig?.models?.providers?.["test-provider"]?.baseUrl).toBe(
+      "https://hooked.test-provider.example/v1",
+    );
+    expect(savedConfig?.plugins?.entries?.["test-provider"]?.enabled).toBe(true);
+    expect(runProviderModelSelectedHookMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: savedConfig,
+        model: "test-provider/model-a",
+        workspaceDir: "/tmp/openclaw",
+      }),
+    );
     expect(
       telegramButtons(saved!)
         .flat()
@@ -331,6 +457,38 @@ describe("Telegram provider setup runtime", () => {
     );
     expect(complete?.text).toBe("Provider setup complete.");
     expect(__testing.providerSetupSessionCount()).toBe(0);
+  });
+
+  it("keeps the current default model when setup declines the provider default", async () => {
+    const { handleProviderSetupCommand, submitProviderSetupTextInput } =
+      await import("./runtime.js");
+
+    const chooseProvider = await handleProviderSetupCommand(
+      commandParams({ commandBody: "/providers start", cfg: sourceConfig }),
+    );
+    const confirmAuth = await handleProviderSetupCommand(
+      commandParams({ commandBody: callbackData(chooseProvider!, 0), cfg: sourceConfig }),
+    );
+    const secretPrompt = await handleProviderSetupCommand(
+      commandParams({ commandBody: callbackData(confirmAuth!, 0), cfg: sourceConfig }),
+    );
+    expect(secretPrompt?.text).toContain("Paste the API key");
+
+    const afterSecret = await submitProviderSetupTextInput({
+      channel: "telegram",
+      accountId: "primary",
+      conversationId: "telegram:owner-dm",
+      senderId: "owner",
+      text: "sk-test",
+    });
+
+    const saved = await handleProviderSetupCommand(
+      commandParams({ commandBody: callbackData(afterSecret.reply!, 0, 1), cfg: sourceConfig }),
+    );
+
+    expect(saved?.text).toContain("Test Provider is ready.");
+    expect(savedConfig?.agents?.defaults?.model).toBe("anthropic/claude-sonnet-4-6");
+    expect(savedConfig?.plugins?.entries?.["test-provider"]?.enabled).toBe(true);
   });
 
   it("renders OAuth URLs as URL buttons before continuation", async () => {

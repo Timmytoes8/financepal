@@ -2,11 +2,7 @@ import { handleProviderSetupCommand } from "../../provider-setup/runtime.js";
 import type { CommandHandler } from "./commands-types.js";
 
 export const handleProvidersCommand: CommandHandler = async (params, allowTextCommands) => {
-  if (
-    !allowTextCommands &&
-    params.command.commandBodyNormalized !== "/providers" &&
-    !params.command.commandBodyNormalized.startsWith("/providers c ")
-  ) {
+  if (!allowTextCommands && !params.command.commandBodyNormalized.startsWith("/providers c ")) {
     return null;
   }
   if (

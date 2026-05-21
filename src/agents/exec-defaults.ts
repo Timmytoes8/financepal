@@ -7,6 +7,9 @@ import {
   type ExecMode,
   type ExecSecurity,
   type ExecTarget,
+  maxAsk,
+  minSecurity,
+  resolveExecModeFromPolicy,
   resolveExecModePolicy,
   resolveExecPolicyForMode,
 } from "../infra/exec-approvals.js";
@@ -182,12 +185,24 @@ export function resolveExecDefaults(params: {
     params.sessionEntry,
   );
   const modePolicy = resolveExecModePolicy(layeredPolicy);
+  const security =
+    approvalDefaults?.security !== undefined
+      ? minSecurity(modePolicy.security, approvalDefaults.security)
+      : modePolicy.security;
+  const ask =
+    approvalDefaults?.ask !== undefined
+      ? maxAsk(modePolicy.ask, approvalDefaults.ask)
+      : modePolicy.ask;
+  const mode =
+    security === modePolicy.security && ask === modePolicy.ask
+      ? modePolicy.mode
+      : resolveExecModeFromPolicy({ security, ask });
   return {
     host,
     effectiveHost: resolved.effectiveHost,
-    mode: modePolicy.mode,
-    security: modePolicy.security,
-    ask: modePolicy.ask,
+    mode,
+    security,
+    ask,
     node: params.sessionEntry?.execNode ?? agentExec?.node ?? globalExec?.node,
     canRequestNode: isRequestedExecTargetAllowed({
       configuredTarget: host,

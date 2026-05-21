@@ -164,6 +164,34 @@ describe("resolveExecDefaults", () => {
     });
   });
 
+  it("reports host approval floors after normalized exec modes", () => {
+    vi.mocked(execApprovals.loadExecApprovals).mockReturnValue({
+      version: 1,
+      defaults: {
+        security: "deny",
+        ask: "off",
+      },
+      agents: {},
+    });
+
+    expect(
+      resolveExecDefaults({
+        cfg: {
+          tools: {
+            exec: {
+              mode: "auto",
+            },
+          },
+        },
+        sandboxAvailable: false,
+      }),
+    ).toMatchObject({
+      mode: "deny",
+      security: "deny",
+      ask: "on-miss",
+    });
+  });
+
   it("keeps legacy security overrides ahead of higher-scope normalized mode", () => {
     expect(
       resolveExecDefaults({

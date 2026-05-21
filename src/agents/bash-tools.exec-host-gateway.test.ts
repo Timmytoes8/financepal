@@ -673,6 +673,36 @@ EOF`,
     }
   });
 
+  it("keeps shell-wrapped mutable script operands on explicit approval in auto-review mode", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-gateway-auto-unbindable-"));
+    try {
+      const scriptPath = path.join(tmp, "script.js");
+      fs.writeFileSync(scriptPath, 'console.log("reviewed");\n');
+      const command = `/bin/sh -lc "node ${scriptPath}"`;
+      evaluateShellAllowlistMock.mockReturnValue({
+        allowlistMatches: [],
+        analysisOk: true,
+        allowlistSatisfied: false,
+        segments: [{ resolution: null, argv: ["/bin/sh", "-lc", `node ${scriptPath}`] }],
+        segmentAllowlistEntries: [],
+      });
+      hasDurableExecApprovalMock.mockReturnValue(false);
+      requiresExecApprovalMock.mockReturnValue(true);
+
+      const result = await runGatewayAllowlist({
+        command,
+        ask: "on-miss",
+        autoReview: true,
+      });
+
+      expect(defaultExecAutoReviewerMock).not.toHaveBeenCalled();
+      expect(createAndRegisterDefaultExecApprovalRequestMock).toHaveBeenCalledTimes(1);
+      expect(result.pendingResult?.details.status).toBe("approval-pending");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("shows reviewer rationale when auto-review defers to human approval", async () => {
     const warnings: string[] = [];
     defaultExecAutoReviewerMock.mockResolvedValueOnce({

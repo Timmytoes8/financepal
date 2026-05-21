@@ -17,6 +17,7 @@ import {
 } from "../infra/exec-approvals.js";
 import { defaultExecAutoReviewer, type ExecAutoReviewer } from "../infra/exec-auto-review.js";
 import type { SafeBinProfile } from "../infra/exec-safe-bin-policy.js";
+import { extractShellWrapperInlineCommand } from "../infra/exec-wrapper-resolution.js";
 import { resolveMutableFileOperandSnapshotSync } from "../node-host/invoke-system-run-plan.js";
 import { markBackgrounded, tail } from "./bash-process-registry.js";
 import {
@@ -219,12 +220,14 @@ function commandRequiresMutableScriptApproval(params: {
   segments: Array<{ argv: string[]; raw?: string }>;
 }): boolean {
   return params.segments.some((segment) => {
+    const shellCommand =
+      extractShellWrapperInlineCommand(segment.argv) ?? segment.raw ?? params.command;
     const snapshot = resolveMutableFileOperandSnapshotSync({
       argv: segment.argv,
       cwd: params.cwd,
-      shellCommand: segment.raw ?? params.command,
+      shellCommand,
     });
-    return snapshot.ok && snapshot.snapshot !== null;
+    return !snapshot.ok || snapshot.snapshot !== null;
   });
 }
 

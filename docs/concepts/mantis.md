@@ -250,6 +250,12 @@ lease expires. The workflow checks the requested PR head before creating a lease
 and verifies the fresh remote checkout resolved to that exact commit before
 posting the lease as ready.
 
+GitHub only exposes manual dispatch for workflows that already exist on the
+default branch. First-run proof for changes to this workflow needs either a
+trusted default-branch workflow deployment or an operator machine with Crabbox
+coordinator, provider, and mac host configuration. Do not run a branch checkout
+of the lease script with shared Crabbox secrets.
+
 `Mantis Telegram Live` wraps the existing Telegram live QA lane in the same PR
 evidence pipeline. It checks out the trusted candidate ref in a separate
 worktree, runs `pnpm openclaw qa telegram --credential-source convex

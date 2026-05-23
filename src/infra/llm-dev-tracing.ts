@@ -112,27 +112,24 @@ export function resolveDevLlmTraceConfig(params?: {
   installRoot?: string | null;
 }): DevLlmTraceConfig {
   const env = params?.env ?? process.env;
-  const uiEnabled = isTruthyEnv(env.OPENCLAW_DEV_TRACING_UI);
+  const extendedTracingEnabled = isTruthyEnv(env.OPENCLAW_DEV_EXTENDED_TRACING);
   const shouldProbeSourceCheckout =
-    uiEnabled || Boolean(params && Object.hasOwn(params, "installRoot"));
+    extendedTracingEnabled || Boolean(params && Object.hasOwn(params, "installRoot"));
   const sourceCheckout = shouldProbeSourceCheckout ? resolveSourceCheckout(params) : false;
-  const payloadCaptureEnabled =
-    sourceCheckout && uiEnabled && isTruthyEnv(env.OPENCLAW_DEV_TRACE_LLM_PAYLOADS);
-  const responseCaptureEnabled =
-    sourceCheckout && uiEnabled && isTruthyEnv(env.OPENCLAW_DEV_TRACE_LLM_RESPONSE);
+  const available = sourceCheckout && extendedTracingEnabled;
   const reasons: string[] = [];
   if (shouldProbeSourceCheckout && !sourceCheckout) {
     reasons.push("not_source_checkout");
   }
-  if (!uiEnabled) {
+  if (!extendedTracingEnabled) {
     reasons.push("env_flag_missing");
   }
   return {
-    available: sourceCheckout && uiEnabled,
+    available,
     sourceCheckout,
-    uiEnabled,
-    payloadCaptureEnabled,
-    responseCaptureEnabled,
+    uiEnabled: available,
+    payloadCaptureEnabled: available,
+    responseCaptureEnabled: available,
     store: "memory",
     reasons,
   };

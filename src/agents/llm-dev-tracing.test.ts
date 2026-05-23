@@ -17,18 +17,12 @@ import {
 } from "../infra/llm-dev-tracing.js";
 import { wrapStreamFnWithDiagnosticModelCallEvents } from "./pi-embedded-runner/run/attempt.model-diagnostic-events.js";
 
-const ENV_KEYS = [
-  "OPENCLAW_DEV_TRACING_UI",
-  "OPENCLAW_DEV_TRACE_LLM_PAYLOADS",
-  "OPENCLAW_DEV_TRACE_LLM_RESPONSE",
-] as const;
+const ENV_KEYS = ["OPENCLAW_DEV_EXTENDED_TRACING"] as const;
 
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 function enableRawTracing() {
-  process.env.OPENCLAW_DEV_TRACING_UI = "1";
-  process.env.OPENCLAW_DEV_TRACE_LLM_PAYLOADS = "1";
-  process.env.OPENCLAW_DEV_TRACE_LLM_RESPONSE = "1";
+  process.env.OPENCLAW_DEV_EXTENDED_TRACING = "1";
 }
 
 async function consume(value: unknown): Promise<void> {
@@ -59,16 +53,16 @@ afterEach(async () => {
 });
 
 describe("dev LLM tracing", () => {
-  it("requires source checkout and explicit env flags", () => {
+  it("requires source checkout and the explicit extended tracing flag", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-tracing-packaged-"));
     const env = {
-      OPENCLAW_DEV_TRACING_UI: "1",
-      OPENCLAW_DEV_TRACE_LLM_PAYLOADS: "1",
+      OPENCLAW_DEV_EXTENDED_TRACING: "1",
     } as NodeJS.ProcessEnv;
 
     expect(resolveDevLlmTraceConfig({ env, installRoot: tempDir })).toMatchObject({
       available: false,
       payloadCaptureEnabled: false,
+      responseCaptureEnabled: false,
       sourceCheckout: false,
     });
 
@@ -77,6 +71,7 @@ describe("dev LLM tracing", () => {
     expect(resolveDevLlmTraceConfig({ env, installRoot: tempDir })).toMatchObject({
       available: true,
       payloadCaptureEnabled: true,
+      responseCaptureEnabled: true,
       sourceCheckout: true,
     });
   });

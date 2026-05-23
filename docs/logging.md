@@ -213,17 +213,14 @@ remain available at `debug` level.
 For local source-checkout debugging, the Control UI can show in-memory LLM
 request traces with full prompts and tool schemas. This is separate from the
 normal log file and is unavailable in packaged installs. Start the Gateway with
-the explicit development flags before opening `/traces`:
+the explicit development tracing flag before opening `/traces`:
 
 ```bash
-OPENCLAW_DEV_TRACING_UI=1 \
-OPENCLAW_DEV_TRACE_LLM_PAYLOADS=1 \
-OPENCLAW_DEV_TRACE_LLM_RESPONSE=1 \
-pnpm openclaw gateway
+OPENCLAW_DEV_EXTENDED_TRACING=1 pnpm gateway:watch
 ```
 
 See [Control UI development traces](/web/control-ui#development-llm-traces)
-for the security model and flag meanings.
+for the security model and flag meaning.
 
 ### Trace correlation
 

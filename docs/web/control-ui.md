@@ -97,24 +97,19 @@ Imported themes are stored only in the current browser profile. They are not wri
 
 ## Development LLM traces
 
-The **Traces** tab is only available from a source checkout, only for direct loopback browser Control UI clients, and only when you start the Gateway with explicit development flags. The trace Gateway methods require a loopback socket, loopback Host and Origin headers, and no proxy forwarding headers. They stay disabled for packaged or bundled installs, Tailscale/LAN/public Control UI deployments, and reverse-proxied browser sessions even if the environment variables are present.
+The **Traces** tab is only available from a source checkout, only for direct loopback browser Control UI clients, and only when you start the Gateway with the explicit development tracing flag. The trace Gateway methods require a loopback socket, loopback Host and Origin headers, and no proxy forwarding headers. They stay disabled for packaged or bundled installs, Tailscale/LAN/public Control UI deployments, and reverse-proxied browser sessions even if the environment variable is present.
 
-Use it when you need to inspect the exact provider request payload for an OpenClaw model call, including the full prompt/input array, model parameters, and tool schemas. Captured data is stored in memory on the Gateway process and is not written to the normal log file.
+Use it when you need to inspect the exact provider request payload for an OpenClaw model call, including the full prompt/input array, model parameters, tool schemas, and a bounded set of raw streaming response events. Captured data is stored in memory on the Gateway process and is not written to the normal log file.
 
 ```bash
-OPENCLAW_DEV_TRACING_UI=1 \
-OPENCLAW_DEV_TRACE_LLM_PAYLOADS=1 \
-OPENCLAW_DEV_TRACE_LLM_RESPONSE=1 \
-pnpm openclaw gateway
+OPENCLAW_DEV_EXTENDED_TRACING=1 pnpm gateway:watch
 ```
 
-Flags:
+Flag:
 
-- `OPENCLAW_DEV_TRACING_UI=1`: enables the local development Traces Gateway methods and dashboard tab.
-- `OPENCLAW_DEV_TRACE_LLM_PAYLOADS=1`: captures full raw request payloads, including prompts and tools.
-- `OPENCLAW_DEV_TRACE_LLM_RESPONSE=1`: captures a bounded set of raw streaming response events.
+- `OPENCLAW_DEV_EXTENDED_TRACING=1`: enables the local development Traces Gateway methods and dashboard tab, captures full raw request payloads including prompts and tools, and captures bounded raw streaming response events.
 
-Open the local dashboard at `/traces` or use the **Traces** sidebar item after the Gateway connects. Because prompts and tool payloads can contain private content, do not enable these flags on a shared or packaged Gateway.
+Open the local dashboard at `/traces` or use the **Traces** sidebar item after the Gateway connects. Because prompts and tool payloads can contain private content, do not enable this flag on a shared Gateway.
 
 ## What it can do (today)
 

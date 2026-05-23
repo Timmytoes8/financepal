@@ -10,12 +10,11 @@ import { PROTOCOL_VERSION } from "../protocol/version.js";
 import { tracesHandlers } from "./traces.js";
 import type { GatewayClient, GatewayRequestHandlerOptions } from "./types.js";
 
-const ENV_KEYS = ["OPENCLAW_DEV_TRACING_UI", "OPENCLAW_DEV_TRACE_LLM_PAYLOADS"] as const;
+const ENV_KEYS = ["OPENCLAW_DEV_EXTENDED_TRACING"] as const;
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 function enableRawTracing() {
-  process.env.OPENCLAW_DEV_TRACING_UI = "1";
-  process.env.OPENCLAW_DEV_TRACE_LLM_PAYLOADS = "1";
+  process.env.OPENCLAW_DEV_EXTENDED_TRACING = "1";
 }
 
 function createClient(
@@ -84,7 +83,7 @@ afterEach(() => {
 });
 
 describe("traces gateway methods", () => {
-  it("returns unavailable until explicit dev tracing flags are enabled", async () => {
+  it("returns unavailable until explicit extended tracing is enabled", async () => {
     const res = await callHandler("traces.capabilities", {}, createClient());
     expect(res.ok).toBe(true);
     expect(res.payload).toMatchObject({

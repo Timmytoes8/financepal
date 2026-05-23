@@ -1405,28 +1405,35 @@ export function createExecTool(
       const host: ExecHost = target.effectiveHost;
 
       const approvalDefaults = host === "sandbox" ? undefined : loadExecApprovals().defaults;
-      const explicitSecurity = defaults?.security ?? approvalDefaults?.security;
+      const explicitSecurity = defaults?.security;
       const configuredSecurity = explicitSecurity ?? (host === "sandbox" ? "deny" : "full");
       const modePolicy = resolveExecModePolicy({
         mode: defaults?.mode,
         security: configuredSecurity,
-        ask: defaults?.ask ?? approvalDefaults?.ask ?? "off",
+        ask: defaults?.ask ?? "off",
       });
       let security = minSecurity(
         modePolicy.security,
         approvalDefaults?.security ?? modePolicy.security,
       );
-      if (security === "deny" && (defaults?.mode === "deny" || explicitSecurity === "deny")) {
+      if (
+        security === "deny" &&
+        (host !== "sandbox" || defaults?.mode === "deny" || explicitSecurity === "deny")
+      ) {
         throw new Error(`exec denied: host=${host} security=deny`);
       }
-      if (elevatedRequested && elevatedMode === "full") {
+      const hostPolicyAllowsFullBypass =
+        (approvalDefaults?.security ?? "full") === "full" &&
+        (approvalDefaults?.ask ?? "off") === "off";
+      if (elevatedRequested && elevatedMode === "full" && hostPolicyAllowsFullBypass) {
         security = "full";
       }
       // Keep local exec defaults in sync with exec-approvals.json when tools.exec.* is unset.
       const requestedAsk = normalizeExecAsk(params.ask);
-      const bypassApprovals = elevatedRequested && elevatedMode === "full";
       const hostAsk = maxAsk(modePolicy.ask, approvalDefaults?.ask ?? modePolicy.ask);
       let ask = maxAsk(hostAsk, requestedAsk ?? hostAsk);
+      const bypassApprovals =
+        elevatedRequested && elevatedMode === "full" && hostPolicyAllowsFullBypass;
       if (bypassApprovals) {
         ask = "off";
       }

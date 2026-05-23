@@ -6,6 +6,12 @@ import type { ExecAutoReviewer } from "../infra/exec-auto-review.js";
 import { captureEnv } from "../test-utils/env.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.js";
 import { createExecTool } from "./bash-tools.exec.js";
+import { callGatewayTool } from "./tools/gateway.js";
+
+vi.mock("./tools/gateway.js", () => ({
+  callGatewayTool: vi.fn(),
+  readGatewayCallOptions: vi.fn(() => ({})),
+}));
 
 describe("exec security floor", () => {
   let envSnapshot: ReturnType<typeof captureEnv>;
@@ -35,6 +41,7 @@ describe("exec security floor", () => {
       delete process.env.HOMEPATH;
     }
     resetProcessRegistryForTests();
+    vi.mocked(callGatewayTool).mockReset();
   });
 
   afterEach(() => {
@@ -194,6 +201,41 @@ describe("exec security floor", () => {
       }),
     ).rejects.toThrow(/security=deny|exec denied/i);
     expect(autoReviewer).not.toHaveBeenCalled();
+  });
+
+  it("preserves host ask floors for elevated full gateway exec", async () => {
+    const openclawDir = path.join(tempRoot ?? os.tmpdir(), ".openclaw");
+    fs.mkdirSync(openclawDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(openclawDir, "exec-approvals.json"),
+      `${JSON.stringify({ version: 1, defaults: { security: "full", ask: "always" }, agents: {} })}\n`,
+    );
+    const calls: string[] = [];
+    vi.mocked(callGatewayTool).mockImplementation(async (method) => {
+      calls.push(method);
+      if (method === "exec.approval.request") {
+        return { status: "accepted", id: "approval-id" };
+      }
+      if (method === "exec.approval.waitDecision") {
+        return { decision: null };
+      }
+      return { ok: true };
+    });
+    const tool = createExecTool({
+      host: "gateway",
+      security: "full",
+      ask: "off",
+      approvalRunningNoticeMs: 0,
+      elevated: { enabled: true, allowed: true, defaultLevel: "full" },
+    });
+
+    const result = await tool.execute("call-elevated-full-host-ask-floor", {
+      command: "echo ok",
+      elevated: true,
+    });
+
+    expect(result.details.status).toBe("approval-pending");
+    expect(calls).toContain("exec.approval.request");
   });
 
   it.each(["on-miss", "off"] as const)(

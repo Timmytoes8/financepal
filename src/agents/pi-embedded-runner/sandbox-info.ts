@@ -42,6 +42,7 @@ export function resolveEmbeddedFullAccessState(params: {
 export function buildEmbeddedSandboxInfo(
   sandbox?: Awaited<ReturnType<typeof resolveSandboxContext>>,
   execElevated?: ExecElevatedDefaults,
+  execPolicy?: EmbeddedFullAccessExecPolicy,
 ): EmbeddedSandboxInfo | undefined {
   if (!sandbox?.enabled) {
     return undefined;
@@ -50,6 +51,7 @@ export function buildEmbeddedSandboxInfo(
   const elevatedAllowed = Boolean(execElevated?.enabled && execElevated.allowed);
   const fullAccess = resolveEmbeddedFullAccessState({
     execElevated,
+    execPolicy,
   });
   return {
     enabled: true,

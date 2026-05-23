@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 type StrictInlineEvalBoundary =
@@ -1142,5 +1145,66 @@ describe("executeNodeHostCommand", () => {
         (params as MockNodeInvokeParams | undefined)?.command === "system.run",
     );
     expect(systemRunCalls).toHaveLength(0);
+  });
+
+  it("revalidates old-node mutable script bindings after approval", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-node-mutable-revalidate-"));
+    try {
+      const scriptPath = path.join(tmp, "script.js");
+      fs.writeFileSync(scriptPath, 'console.log("reviewed");\n');
+      listNodesMock.mockResolvedValue([
+        {
+          nodeId: "node-1",
+          commands: ["system.run"],
+          platform: process.platform,
+        },
+      ]);
+      resolveExecHostApprovalContextMock.mockReturnValue({
+        approvals: { allowlist: [], file: { version: 1, agents: {} } },
+        hostSecurity: "allowlist",
+        hostAsk: "on-miss",
+        askFallback: "deny",
+      });
+      evaluateShellAllowlistMock.mockReturnValue({
+        allowlistMatches: [],
+        analysisOk: true,
+        allowlistSatisfied: false,
+        segments: [{ resolution: null, argv: ["node", scriptPath] }],
+        segmentAllowlistEntries: [],
+      });
+      resolveApprovalDecisionOrUndefinedMock.mockImplementation(async () => {
+        fs.writeFileSync(scriptPath, 'console.log("changed");\n');
+        return "allow-once";
+      });
+
+      const result = await executeNodeHostCommand({
+        command: `node ${scriptPath}`,
+        workdir: tmp,
+        env: {},
+        security: "allowlist",
+        ask: "on-miss",
+        defaultTimeoutSec: 30,
+        approvalRunningNoticeMs: 0,
+        warnings: [],
+        agentId: "requested-agent",
+        sessionKey: "requested-session",
+      });
+
+      expect(result.details?.status).toBe("approval-pending");
+      await vi.waitFor(() => {
+        expect(sendExecApprovalFollowupResultMock).toHaveBeenCalledWith(
+          { approvalId: "approval-1" },
+          `Exec denied (node=node-1 id=approval-1, approval script operand changed before execution): node ${scriptPath}`,
+        );
+      });
+      const systemRunCalls = callGatewayToolMock.mock.calls.filter(
+        ([method, , params]) =>
+          method === "node.invoke" &&
+          (params as MockNodeInvokeParams | undefined)?.command === "system.run",
+      );
+      expect(systemRunCalls).toHaveLength(0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

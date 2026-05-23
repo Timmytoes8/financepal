@@ -6,6 +6,7 @@ import {
   resolveExecApprovalAllowedDecisions,
 } from "../infra/exec-approvals.js";
 import { defaultExecAutoReviewer } from "../infra/exec-auto-review.js";
+import { revalidateApprovedMutableFileOperand } from "../node-host/invoke-system-run-plan.js";
 import {
   buildExecApprovalRequesterContext,
   buildExecApprovalTurnSourceContext,
@@ -22,6 +23,7 @@ import {
 } from "./bash-tools.exec-host-node-phases.js";
 import type { ExecuteNodeHostCommandParams } from "./bash-tools.exec-host-node.types.js";
 import * as execHostShared from "./bash-tools.exec-host-shared.js";
+import type { MutableScriptApprovalBinding } from "./bash-tools.exec-mutable-script-guard.js";
 import {
   DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS,
   DEFAULT_NOTIFY_TAIL_CHARS,
@@ -35,6 +37,20 @@ import { callGatewayTool } from "./tools/gateway.js";
 export type { ExecuteNodeHostCommandParams } from "./bash-tools.exec-host-node.types.js";
 
 const APPROVED_NODE_INVOKE_SCOPES = [WRITE_SCOPE, APPROVALS_SCOPE];
+
+function hasChangedMutableScriptBinding(params: {
+  bindings: MutableScriptApprovalBinding[];
+  cwd: string | undefined;
+}): boolean {
+  return params.bindings.some(
+    (binding) =>
+      !revalidateApprovedMutableFileOperand({
+        snapshot: binding.snapshot,
+        argv: binding.argv,
+        cwd: params.cwd,
+      }),
+  );
+}
 
 export async function executeNodeHostCommand(
   params: ExecuteNodeHostCommandParams,
@@ -71,6 +87,8 @@ export async function executeNodeHostCommand(
     inlineEvalHit,
     requiresSecurityAuditSuppressionApproval,
     requiresMutableScriptApproval,
+    mutableScriptBindings,
+    mutableScriptBindingError,
     autoReviewArgv,
   } = approvalAnalysis;
   const requiresAsk =
@@ -88,6 +106,15 @@ export async function executeNodeHostCommand(
     params.warnings.push(
       "Warning: security audit suppression changes require explicit approval unless exec is running in yolo mode.",
     );
+  }
+  if (requiresMutableScriptApproval && mutableScriptBindingError) {
+    return failedTextResult(mutableScriptBindingError, {
+      status: "failed",
+      exitCode: null,
+      durationMs: 0,
+      aggregated: "",
+      cwd: prepared.cwd,
+    });
   }
   const registerNodeApproval = async (
     approvalId: string,
@@ -292,6 +319,19 @@ export async function executeNodeHostCommand(
             return;
           }
 
+          if (
+            hasChangedMutableScriptBinding({
+              bindings: mutableScriptBindings,
+              cwd: prepared.cwd,
+            })
+          ) {
+            await execHostShared.sendExecApprovalFollowupResult(
+              followupTarget,
+              `Exec denied (node=${target.nodeId} id=${approvalId}, approval script operand changed before execution): ${params.command}`,
+            );
+            return;
+          }
+
           try {
             const raw = await callGatewayTool(
               "node.invoke",
@@ -365,6 +405,22 @@ export async function executeNodeHostCommand(
   }
 
   const startedAt = Date.now();
+  if (
+    inlineApprovedByAsk &&
+    inlineApprovalId &&
+    hasChangedMutableScriptBinding({
+      bindings: mutableScriptBindings,
+      cwd: prepared.cwd,
+    })
+  ) {
+    return failedTextResult("exec denied: approval script operand changed before execution", {
+      status: "failed",
+      exitCode: null,
+      durationMs: Date.now() - startedAt,
+      aggregated: "",
+      cwd: prepared.cwd,
+    });
+  }
   const invoke = buildNodeSystemRunInvoke({
     target,
     command: prepared.argv,

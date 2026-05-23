@@ -20,7 +20,10 @@ import { parsePreparedSystemRunPayload } from "../infra/system-run-approval-cont
 import { formatExecCommand, resolveSystemRunCommandRequest } from "../infra/system-run-command.js";
 import { normalizeNullableString } from "../shared/string-coerce.js";
 import type { ExecuteNodeHostCommandParams } from "./bash-tools.exec-host-node.types.js";
-import { commandRequiresMutableScriptApproval } from "./bash-tools.exec-mutable-script-guard.js";
+import {
+  resolveMutableScriptApprovalBindings,
+  type MutableScriptApprovalBinding,
+} from "./bash-tools.exec-mutable-script-guard.js";
 import { renderExecOutputText } from "./bash-tools.exec-output.js";
 import type { ExecToolDetails } from "./bash-tools.exec-types.js";
 import { callGatewayTool } from "./tools/gateway.js";
@@ -52,6 +55,8 @@ type NodeApprovalAnalysis = {
   inlineEvalHit: InterpreterInlineEvalHit | null;
   requiresSecurityAuditSuppressionApproval: boolean;
   requiresMutableScriptApproval: boolean;
+  mutableScriptBindings: MutableScriptApprovalBinding[];
+  mutableScriptBindingError: string | null;
   autoReviewArgv?: string[];
 };
 
@@ -327,12 +332,18 @@ export async function analyzeNodeApprovalRequirement(params: {
       env: params.request.env,
       segments: baseAllowlistEval.segments,
     }) && !(params.hostSecurity === "full" && params.hostAsk === "off");
-  const requiresMutableScriptApproval =
-    (params.prepared.plan.mutableFileOperand != null ||
-      commandRequiresMutableScriptApproval({
+  const mutableScriptApprovalBindings:
+    | { ok: true; bindings: MutableScriptApprovalBinding[] }
+    | { ok: false; message: string } = params.target.supportsSystemRunPrepare
+    ? { ok: true, bindings: [] }
+    : resolveMutableScriptApprovalBindings({
         cwd: params.prepared.cwd ?? params.request.workdir,
         segments: baseAllowlistEval.segments,
-      })) &&
+      });
+  const requiresMutableScriptApproval =
+    (params.prepared.plan.mutableFileOperand != null ||
+      !mutableScriptApprovalBindings.ok ||
+      mutableScriptApprovalBindings.bindings.length > 0) &&
     !(params.hostSecurity === "full" && params.hostAsk === "off");
   if (inlineEvalHit) {
     params.request.warnings.push(
@@ -388,6 +399,12 @@ export async function analyzeNodeApprovalRequirement(params: {
     inlineEvalHit,
     requiresSecurityAuditSuppressionApproval,
     requiresMutableScriptApproval,
+    mutableScriptBindings: mutableScriptApprovalBindings.ok
+      ? mutableScriptApprovalBindings.bindings
+      : [],
+    mutableScriptBindingError: mutableScriptApprovalBindings.ok
+      ? null
+      : mutableScriptApprovalBindings.message,
     autoReviewArgv:
       baseAllowlistEval.segments.length === 1 &&
       (baseAllowlistEval.segments[0]?.raw === undefined ||

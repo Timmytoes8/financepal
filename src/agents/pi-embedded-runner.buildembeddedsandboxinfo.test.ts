@@ -113,6 +113,27 @@ describe("buildEmbeddedSandboxInfo", () => {
       },
     });
   });
+
+  it("marks full access unavailable when exec policy denies execution", () => {
+    const sandbox = createSandboxContext();
+
+    expect(
+      buildEmbeddedSandboxInfo(
+        sandbox,
+        {
+          enabled: true,
+          allowed: true,
+          defaultLevel: "full",
+        },
+        { mode: "deny" },
+      )?.elevated,
+    ).toEqual({
+      allowed: true,
+      defaultLevel: "full",
+      fullAccessAvailable: false,
+      fullAccessBlockedReason: "host-policy",
+    });
+  });
 });
 
 describe("resolveEmbeddedFullAccessState", () => {

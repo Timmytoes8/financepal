@@ -103,9 +103,24 @@ let buildTelegramMessageContextLoader:
   | undefined;
 let vitestModuleLoader: Promise<typeof import("vitest")> | undefined;
 let messageContextMocksInstalled = false;
+let topicNameStoreTestFactoryInstalled = false;
+const topicNameStoresForTest = new Map<
+  string,
+  Map<
+    string,
+    {
+      name: string;
+      iconColor?: number;
+      iconCustomEmojiId?: string;
+      closed?: boolean;
+      updatedAt: number;
+    }
+  >
+>();
 
 async function loadBuildTelegramMessageContext() {
   await installMessageContextTestMocks();
+  await installTopicNameStoreTestFactory();
   if (!buildTelegramMessageContextLoader) {
     ({ buildTelegramMessageContext: buildTelegramMessageContextLoader } =
       await import("./bot-message-context.js"));
@@ -116,6 +131,31 @@ async function loadBuildTelegramMessageContext() {
 async function loadVitestModule() {
   vitestModuleLoader ??= import("vitest");
   return await vitestModuleLoader;
+}
+
+async function installTopicNameStoreTestFactory() {
+  if (topicNameStoreTestFactoryInstalled) {
+    return;
+  }
+  const { setTelegramTopicNameStoreFactoryForTest } = await import("./topic-name-cache.js");
+  setTelegramTopicNameStoreFactoryForTest((namespace) => {
+    let store = topicNameStoresForTest.get(namespace);
+    if (!store) {
+      store = new Map();
+      topicNameStoresForTest.set(namespace, store);
+    }
+    return {
+      register: async (key, value) => {
+        store.set(key, value);
+      },
+      entries: async () => [...store.entries()].map(([key, value]) => ({ key, value })),
+      delete: async (key) => store.delete(key),
+      clear: async () => {
+        store.clear();
+      },
+    };
+  });
+  topicNameStoreTestFactoryInstalled = true;
 }
 
 async function installMessageContextTestMocks() {

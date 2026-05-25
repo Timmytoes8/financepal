@@ -667,6 +667,13 @@ describe("scripts/test-extension.mjs", () => {
     expect([...parseExactVitestExcludePaths(["--exclude=extensions/**/*.test.ts"])]).toEqual([]);
   });
 
+  it("accepts a leading pnpm argument separator before the extension batch", () => {
+    expect(parseExtensionIds(["--", "discord,telegram", "--reporter=dot"])).toEqual({
+      extensionIds: ["discord", "telegram"],
+      passthroughArgs: ["--reporter=dot"],
+    });
+  });
+
   it("treats extensions without tests as a no-op by default", () => {
     const extensionId = findExtensionWithoutTests();
     const stdout = runScript([extensionId]);

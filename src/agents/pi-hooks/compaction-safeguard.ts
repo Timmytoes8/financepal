@@ -858,7 +858,10 @@ async function readWorkspaceContextForSummary(
       }
     })();
     let sections = extractSections(content, effectiveSectionNames);
-    if (sections.length === 0 && matchesSectionSet(effectiveSectionNames, DEFAULT_POST_COMPACTION_SECTIONS)) {
+    if (
+      sections.length === 0 &&
+      matchesSectionSet(effectiveSectionNames, DEFAULT_POST_COMPACTION_SECTIONS)
+    ) {
       sections = extractSections(content, LEGACY_POST_COMPACTION_SECTIONS);
     }
 

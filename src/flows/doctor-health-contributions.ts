@@ -606,6 +606,23 @@ async function runToolResultCapHealth(ctx: DoctorHealthFlowContext): Promise<voi
   }
 }
 
+async function runRuntimeToolSchemasHealth(ctx: DoctorHealthFlowContext): Promise<void> {
+  const findings = await ctx.runtime.collectRuntimeToolSchemaFindings(ctx.cfg);
+  if (findings.length === 0) {
+    return;
+  }
+
+  const { note } = await import("../terminal/note.js");
+  const lines = findings.flatMap((finding) => [
+    finding.message,
+    ...(finding.path ? [`Path: ${finding.path}`] : []),
+    ...(finding.target ? [`Target: ${finding.target}`] : []),
+    ...(finding.requirement ? [`Requirement: ${finding.requirement}`] : []),
+    ...(finding.fixHint ? [`Fix: ${finding.fixHint}`] : []),
+  ]);
+  note(lines.join("\n"), "Runtime tool schemas");
+}
+
 async function runSystemdLingerHealth(ctx: DoctorHealthFlowContext): Promise<void> {
   if (
     ctx.options.nonInteractive === true ||
@@ -953,6 +970,12 @@ export function resolveDoctorHealthContributions(): DoctorHealthContribution[] {
       id: "doctor:tool-result-cap",
       label: "Tool result cap",
       run: runToolResultCapHealth,
+    }),
+    createDoctorHealthContribution({
+      id: "doctor:runtime-tool-schemas",
+      label: "Runtime tool schemas",
+      healthCheckIds: ["core/doctor/runtime-tool-schemas"],
+      run: runRuntimeToolSchemasHealth,
     }),
     createDoctorHealthContribution({
       id: "doctor:systemd-linger",

@@ -8,7 +8,6 @@ import {
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { buildGatewayConnectionDetails } from "../gateway/call.js";
 import type { RuntimeEnv } from "../runtime.js";
-import type { HealthFinding } from "./health-checks.js";
 import type { FlowContribution } from "./types.js";
 export {
   doctorHealthConversionRules,
@@ -615,13 +614,22 @@ async function runRuntimeToolSchemasHealth(ctx: DoctorHealthFlowContext): Promis
   }
 
   const { note } = await import("../terminal/note.js");
-  const lines = findings.flatMap((finding: HealthFinding) => [
-    finding.message,
-    ...(finding.path ? [`Path: ${finding.path}`] : []),
-    ...(finding.target ? [`Target: ${finding.target}`] : []),
-    ...(finding.requirement ? [`Requirement: ${finding.requirement}`] : []),
-    ...(finding.fixHint ? [`Fix: ${finding.fixHint}`] : []),
-  ]);
+  const lines: string[] = [];
+  for (const finding of findings) {
+    lines.push(finding.message);
+    if (finding.path) {
+      lines.push(`Path: ${finding.path}`);
+    }
+    if (finding.target) {
+      lines.push(`Target: ${finding.target}`);
+    }
+    if (finding.requirement) {
+      lines.push(`Requirement: ${finding.requirement}`);
+    }
+    if (finding.fixHint) {
+      lines.push(`Fix: ${finding.fixHint}`);
+    }
+  }
   note(lines.join("\n"), "Runtime tool schemas");
 }
 

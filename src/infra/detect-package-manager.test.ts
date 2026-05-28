@@ -29,6 +29,31 @@ describe("detectPackageManager", () => {
     );
   });
 
+  it("treats published npm package shrinkwrap as npm install evidence", async () => {
+    await withPackageManagerRoot(
+      [
+        { path: "package.json", content: JSON.stringify({ packageManager: "pnpm@10.8.1" }) },
+        { path: "npm-shrinkwrap.json", content: "" },
+      ],
+      async (root) => {
+        await expect(detectPackageManager(root)).resolves.toBe("npm");
+      },
+    );
+  });
+
+  it("keeps packageManager precedence for git roots that also carry shrinkwrap", async () => {
+    await withPackageManagerRoot(
+      [
+        { path: ".git", content: "" },
+        { path: "package.json", content: JSON.stringify({ packageManager: "pnpm@10.8.1" }) },
+        { path: "npm-shrinkwrap.json", content: "" },
+      ],
+      async (root) => {
+        await expect(detectPackageManager(root)).resolves.toBe("pnpm");
+      },
+    );
+  });
+
   it.each([
     {
       name: "uses bun.lock",
@@ -46,6 +71,11 @@ describe("detectPackageManager", () => {
         { path: "package.json", content: JSON.stringify({ packageManager: "yarn@4.0.0" }) },
         { path: "package-lock.json", content: "" },
       ],
+      expected: "npm",
+    },
+    {
+      name: "uses npm-shrinkwrap.json",
+      files: [{ path: "npm-shrinkwrap.json", content: "" }],
       expected: "npm",
     },
   ])("falls back to lockfiles when $name", async ({ files, expected }) => {

@@ -230,6 +230,22 @@ describe("checkDepsStatus", () => {
       expect(okDeps.status).toBe("ok");
     });
   });
+
+  it("uses npm-shrinkwrap as the npm dependency lock marker when present", async () => {
+    await withTempDir({ prefix: "openclaw-update-check-npm-" }, async (root) => {
+      const shrinkwrapPath = path.join(root, "npm-shrinkwrap.json");
+      const markerPath = path.join(root, "node_modules");
+      await fs.writeFile(shrinkwrapPath, "lock", "utf8");
+      await fs.mkdir(markerPath, { recursive: true });
+
+      await expect(checkDepsStatus({ root, manager: "npm" })).resolves.toMatchObject({
+        manager: "npm",
+        status: "ok",
+        lockfilePath: shrinkwrapPath,
+        markerPath,
+      });
+    });
+  });
 });
 
 describe("checkUpdateStatus", () => {
@@ -266,6 +282,31 @@ describe("checkUpdateStatus", () => {
       expect(status.git).toBeUndefined();
       expect(status.registry).toBeUndefined();
       expect(status.deps?.manager).toBe("npm");
+    });
+  });
+
+  it("reports npm for published npm roots with pnpm build metadata and shrinkwrap", async () => {
+    await withTempDir({ prefix: "openclaw-update-check-" }, async (root) => {
+      const shrinkwrapPath = path.join(root, "npm-shrinkwrap.json");
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@10.8.1" }),
+        "utf8",
+      );
+      await fs.writeFile(shrinkwrapPath, "lock", "utf8");
+      await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
+
+      const status = await checkUpdateStatus({
+        root,
+        includeRegistry: false,
+        fetchGit: false,
+        timeoutMs: 1000,
+      });
+      expect(status.installKind).toBe("package");
+      expect(status.packageManager).toBe("npm");
+      expect(status.deps?.manager).toBe("npm");
+      expect(status.deps?.status).toBe("ok");
+      expect(status.deps?.lockfilePath).toBe(shrinkwrapPath);
     });
   });
 

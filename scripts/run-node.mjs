@@ -369,6 +369,122 @@ const listRequiredBundledPluginMetadataOutputs = (pluginEntries, deps) =>
     return requiredPaths;
   });
 
+const normalizeManifestRelativePath = (rawPath) =>
+  String(rawPath ?? "")
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\.\//u, "");
+
+const resolveBundledSkillTargetPath = (rawPath) => {
+  const normalized = normalizeManifestRelativePath(rawPath);
+  if (!normalized || normalized.startsWith("../") || normalized.includes("/../")) {
+    return null;
+  }
+  if (/^node_modules(?:\/|$)/u.test(normalized)) {
+    const trimmed = normalized.replace(/^node_modules\/?/u, "");
+    return trimmed ? path.posix.join("bundled-skills", trimmed) : null;
+  }
+  return normalized;
+};
+
+const resolveBundledSkillSourcePath = (pluginEntry, rawPath, deps) => {
+  const normalized = normalizeManifestRelativePath(rawPath);
+  if (!normalized || normalized.startsWith("../") || normalized.includes("/../")) {
+    return null;
+  }
+  const pluginLocalPath = path.join(deps.cwd, BUNDLED_PLUGIN_ROOT_DIR, pluginEntry.id, normalized);
+  if (deps.fs.existsSync(pluginLocalPath)) {
+    return pluginLocalPath;
+  }
+  if (!/^node_modules(?:\/|$)/u.test(normalized)) {
+    return pluginLocalPath;
+  }
+  return path.join(deps.cwd, normalized);
+};
+
+const listRequiredSkillOutputFiles = (sourcePath, targetPath, deps, options = {}) => {
+  const outputs = [];
+  const queue = [{ source: sourcePath, target: targetPath }];
+  const shouldExcludeNestedNodeModules = options.excludeNestedNodeModules === true;
+  while (queue.length > 0) {
+    const current = queue.pop();
+    if (!current) {
+      continue;
+    }
+    let stat;
+    try {
+      stat = deps.fs.statSync(current.source);
+    } catch {
+      continue;
+    }
+    if (stat.isFile()) {
+      outputs.push(current.target);
+      continue;
+    }
+    if (!stat.isDirectory()) {
+      continue;
+    }
+    let entries = [];
+    try {
+      entries = deps.fs.readdirSync(current.source, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const childSource = path.join(current.source, entry.name);
+      const childTarget = path.join(current.target, entry.name);
+      if (shouldExcludeNestedNodeModules && entry.name === "node_modules") {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        queue.push({ source: childSource, target: childTarget });
+      } else if (entry.isFile()) {
+        outputs.push(childTarget);
+      }
+    }
+  }
+  return outputs.toSorted((left, right) => left.localeCompare(right));
+};
+
+const listRequiredBundledPluginSkillOutputs = (pluginEntries, deps) => {
+  const distExtensionsRoot = path.join(resolveRuntimePostBuildDistRoot(deps), "extensions");
+  return pluginEntries.flatMap((pluginEntry) => {
+    const manifestPath = path.join(
+      deps.cwd,
+      BUNDLED_PLUGIN_ROOT_DIR,
+      pluginEntry.id,
+      "openclaw.plugin.json",
+    );
+    let manifest;
+    try {
+      manifest = JSON.parse(deps.fs.readFileSync(manifestPath, "utf8"));
+    } catch {
+      return [];
+    }
+    const skills = Array.isArray(manifest.skills) ? manifest.skills : [];
+    return skills.flatMap((rawPath) => {
+      if (typeof rawPath !== "string") {
+        return [];
+      }
+      const sourcePath = resolveBundledSkillSourcePath(pluginEntry, rawPath, deps);
+      const targetPath = resolveBundledSkillTargetPath(rawPath);
+      if (!sourcePath || !targetPath || !deps.fs.existsSync(sourcePath)) {
+        return [];
+      }
+      return listRequiredSkillOutputFiles(
+        sourcePath,
+        path.join(distExtensionsRoot, pluginEntry.id, targetPath),
+        deps,
+        {
+          excludeNestedNodeModules: /^node_modules(?:\/|$)/u.test(
+            normalizeManifestRelativePath(rawPath),
+          ),
+        },
+      );
+    });
+  });
+};
+
 const listRuntimeOverlaySourcePaths = (sourceDir, deps) => {
   const paths = [];
   const queue = [sourceDir];
@@ -492,6 +608,7 @@ export const listRequiredRuntimePostBuildOutputs = (deps) => {
     ...listRequiredOpenClawExtensionAliasOutputs(deps),
     ...listRequiredStaticExtensionAssetOutputs(deps),
     ...listRequiredBundledPluginMetadataOutputs(builtPluginEntries, deps),
+    ...listRequiredBundledPluginSkillOutputs(builtPluginEntries, deps),
     ...listRequiredBundledPluginRuntimeOverlayOutputs(deps),
   ];
 };

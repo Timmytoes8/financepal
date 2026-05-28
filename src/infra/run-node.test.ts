@@ -2466,6 +2466,108 @@ describe("run-node script", () => {
     });
   });
 
+  it("reports missing dist skill outputs even when stamps match HEAD", async () => {
+    await withTempDir({ prefix: "openclaw-run-node-" }, async (tmp) => {
+      await setupTrackedProject(tmp, {
+        files: {
+          [ROOT_SRC]: "export const value = 1;\n",
+          [EXTENSION_INDEX]: "export default {};\n",
+          [EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills/SKILL.md"]}\n',
+          [EXTENSION_SKILL]: "# Demo\n",
+          [DIST_EXTENSION_INDEX]: "export default {};\n",
+          [DIST_EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills/SKILL.md"]}\n',
+          [DIST_EXTENSION_SKILL]: "# Demo\n",
+          [DIST_RUNTIME_EXTENSION_INDEX]: "export default {};\n",
+          [DIST_RUNTIME_EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills/SKILL.md"]}\n',
+          [DIST_RUNTIME_EXTENSION_SKILL]: "# Demo\n",
+          [RUNTIME_POSTBUILD_STAMP]: '{"head":"abc123"}\n',
+        },
+        buildPaths: [
+          ROOT_SRC,
+          EXTENSION_INDEX,
+          EXTENSION_MANIFEST,
+          EXTENSION_SKILL,
+          DIST_ENTRY,
+          DIST_EXTENSION_INDEX,
+          DIST_EXTENSION_MANIFEST,
+          DIST_EXTENSION_SKILL,
+          DIST_RUNTIME_EXTENSION_INDEX,
+          DIST_RUNTIME_EXTENSION_MANIFEST,
+          DIST_RUNTIME_EXTENSION_SKILL,
+          BUILD_STAMP,
+          RUNTIME_POSTBUILD_STAMP,
+        ],
+      });
+      await fs.rm(resolvePath(tmp, DIST_EXTENSION_SKILL));
+
+      const requirement = resolveRuntimePostBuildRequirement(
+        createBuildRequirementDeps(tmp, {
+          gitHead: "abc123\n",
+          gitStatus: "",
+        }),
+      );
+
+      expect(requirement).toEqual({
+        shouldSync: true,
+        reason: "missing_runtime_postbuild_output",
+      });
+    });
+  });
+
+  it("reports missing dist skill support file outputs even when stamps match HEAD", async () => {
+    await withTempDir({ prefix: "openclaw-run-node-" }, async (tmp) => {
+      await setupTrackedProject(tmp, {
+        files: {
+          [ROOT_SRC]: "export const value = 1;\n",
+          [EXTENSION_INDEX]: "export default {};\n",
+          [EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills"]}\n',
+          [EXTENSION_SKILL]: "# Demo\n",
+          "extensions/demo/skills/reference.md": "# Reference\n",
+          [DIST_EXTENSION_INDEX]: "export default {};\n",
+          [DIST_EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills"]}\n',
+          [DIST_EXTENSION_SKILL]: "# Demo\n",
+          "dist/extensions/demo/skills/reference.md": "# Reference\n",
+          [DIST_RUNTIME_EXTENSION_INDEX]: "export default {};\n",
+          [DIST_RUNTIME_EXTENSION_MANIFEST]: '{"id":"demo","skills":["./skills"]}\n',
+          [DIST_RUNTIME_EXTENSION_SKILL]: "# Demo\n",
+          "dist-runtime/extensions/demo/skills/reference.md": "# Reference\n",
+          [RUNTIME_POSTBUILD_STAMP]: '{"head":"abc123"}\n',
+        },
+        buildPaths: [
+          ROOT_SRC,
+          EXTENSION_INDEX,
+          EXTENSION_MANIFEST,
+          EXTENSION_SKILL,
+          "extensions/demo/skills/reference.md",
+          DIST_ENTRY,
+          DIST_EXTENSION_INDEX,
+          DIST_EXTENSION_MANIFEST,
+          DIST_EXTENSION_SKILL,
+          "dist/extensions/demo/skills/reference.md",
+          DIST_RUNTIME_EXTENSION_INDEX,
+          DIST_RUNTIME_EXTENSION_MANIFEST,
+          DIST_RUNTIME_EXTENSION_SKILL,
+          "dist-runtime/extensions/demo/skills/reference.md",
+          BUILD_STAMP,
+          RUNTIME_POSTBUILD_STAMP,
+        ],
+      });
+      await fs.rm(resolvePath(tmp, "dist/extensions/demo/skills/reference.md"));
+
+      const requirement = resolveRuntimePostBuildRequirement(
+        createBuildRequirementDeps(tmp, {
+          gitHead: "abc123\n",
+          gitStatus: "",
+        }),
+      );
+
+      expect(requirement).toEqual({
+        shouldSync: true,
+        reason: "missing_runtime_postbuild_output",
+      });
+    });
+  });
+
   it("reports dirty runtime postbuild inputs separately from rebuild inputs", async () => {
     await withTempDir({ prefix: "openclaw-run-node-" }, async (tmp) => {
       await setupTrackedProject(tmp, {

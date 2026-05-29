@@ -28,8 +28,8 @@ import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   applyModelOverrideToSessionEntry,
-  clearAutoRuntimeAuthProfileSelection,
-  hasAutoRuntimeAuthProfileSelection,
+  clearStaleAutoRuntimeAuthProfileSelection,
+  hasStaleAutoRuntimeAuthProfileSelection,
 } from "../../sessions/model-overrides.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
 import type { ThinkLevel } from "./directives.js";
@@ -221,7 +221,11 @@ export async function createModelSelectionState(params: {
   const staleDirectStoredOverride =
     staleHeartbeatAutoFallbackOverride || staleLegacyOpenAICodexAutoOverride;
   const staleAutoRuntimeAuthProfileSelection =
-    params.skipStoredModelOverride !== true && hasAutoRuntimeAuthProfileSelection(sessionEntry);
+    params.skipStoredModelOverride !== true &&
+    hasStaleAutoRuntimeAuthProfileSelection(sessionEntry, {
+      provider: primaryProvider,
+      model: primaryModel,
+    });
 
   if (needsModelCatalog) {
     modelCatalog = await (await loadModelCatalogRuntime()).loadModelCatalog({ config: cfg });
@@ -354,7 +358,10 @@ export async function createModelSelectionState(params: {
   if (staleAutoRuntimeAuthProfileSelection && sessionEntry && sessionStore && sessionKey) {
     const runtimeProvider = sessionEntry.modelProvider;
     const runtimeModel = sessionEntry.model;
-    const { updated } = clearAutoRuntimeAuthProfileSelection(sessionEntry);
+    const { updated } = clearStaleAutoRuntimeAuthProfileSelection(sessionEntry, {
+      provider: primaryProvider,
+      model: primaryModel,
+    });
     if (updated) {
       sessionStore[sessionKey] = sessionEntry;
       if (storePath) {

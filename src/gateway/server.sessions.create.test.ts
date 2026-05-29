@@ -192,6 +192,44 @@ test("sessions.create does not inherit runtime-only auto auth fallback selection
   expect(created.payload?.entry?.authProfileOverrideSource).toBeUndefined();
 });
 
+test("sessions.create inherits healthy auto auth runtime selection", async () => {
+  await createSessionStoreDir();
+  await writeSessionStore({
+    entries: {
+      main: sessionStoreEntry("sess-parent", {
+        modelProvider: "anthropic",
+        model: "claude-opus-4-6",
+        contextTokens: 200000,
+        authProfileOverride: "anthropic:work",
+        authProfileOverrideSource: "auto",
+      }),
+    },
+  });
+
+  const created = await directSessionReq<{
+    entry?: {
+      modelProvider?: string;
+      model?: string;
+      contextTokens?: number;
+      authProfileOverride?: string;
+      authProfileOverrideSource?: string;
+      parentSessionKey?: string;
+    };
+  }>("sessions.create", {
+    agentId: "main",
+    label: "Fresh Chat",
+    parentSessionKey: "main",
+  });
+
+  expect(created.ok).toBe(true);
+  expect(created.payload?.entry?.parentSessionKey).toBe("agent:main:main");
+  expect(created.payload?.entry?.modelProvider).toBe("anthropic");
+  expect(created.payload?.entry?.model).toBe("claude-opus-4-6");
+  expect(created.payload?.entry?.contextTokens).toBe(200000);
+  expect(created.payload?.entry?.authProfileOverride).toBe("anthropic:work");
+  expect(created.payload?.entry?.authProfileOverrideSource).toBe("auto");
+});
+
 test("sessions.create accepts an explicit key for persistent dashboard sessions", async () => {
   await createSessionStoreDir();
 

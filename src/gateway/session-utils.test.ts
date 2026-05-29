@@ -1468,6 +1468,23 @@ describe("resolveSessionModelRef", () => {
     expect(resolved).toEqual({ provider: "minimax", model: "MiniMax-M2.7" });
   });
 
+  test("preserves auto auth profile runtime fields when they match the selected model", () => {
+    const cfg = createModelDefaultsConfig({
+      primary: "minimax/MiniMax-M2.7",
+    });
+
+    const resolved = resolveSessionModelRef(cfg, {
+      sessionId: "s-auto-auth-runtime",
+      updatedAt: Date.now(),
+      modelProvider: "minimax",
+      model: "MiniMax-M2.7",
+      authProfileOverride: "minimax:global",
+      authProfileOverrideSource: "auto",
+    });
+
+    expect(resolved).toEqual({ provider: "minimax", model: "MiniMax-M2.7" });
+  });
+
   test("falls back to override when runtime model is not recorded yet", () => {
     const cfg = createModelDefaultsConfig({
       primary: "anthropic/claude-opus-4-6",

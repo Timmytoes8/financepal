@@ -1109,6 +1109,52 @@ describe("createModelSelectionState auto-failover overrides", () => {
     expect(sessionStore[sessionKey]?.authProfileOverrideSource).toBeUndefined();
   });
 
+  it("preserves ordinary auto auth profile rotation when runtime model matches selection", async () => {
+    authProfileStoreMock.store = {
+      version: 1,
+      profiles: {
+        "minimax:global": {
+          type: "api_key",
+          provider: "minimax",
+          key: "primary-key",
+        },
+      },
+    };
+    const sessionEntry = makeEntry({
+      modelProvider: "minimax",
+      model: "MiniMax-M2.7",
+      contextTokens: 128_000,
+      authProfileOverride: "minimax:global",
+      authProfileOverrideSource: "auto",
+      authProfileOverrideCompactionCount: 0,
+    });
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    const state = await createModelSelectionState({
+      cfg: {} as OpenClawConfig,
+      agentCfg: undefined,
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+      defaultProvider: "minimax",
+      defaultModel: "MiniMax-M2.7",
+      primaryProvider: "minimax",
+      primaryModel: "MiniMax-M2.7",
+      provider: "minimax",
+      model: "MiniMax-M2.7",
+      hasModelDirective: false,
+    });
+
+    expect(state.provider).toBe("minimax");
+    expect(state.model).toBe("MiniMax-M2.7");
+    expect(state.resetModelOverride).toBe(false);
+    expect(sessionStore[sessionKey]?.modelProvider).toBe("minimax");
+    expect(sessionStore[sessionKey]?.model).toBe("MiniMax-M2.7");
+    expect(sessionStore[sessionKey]?.contextTokens).toBe(128_000);
+    expect(sessionStore[sessionKey]?.authProfileOverride).toBe("minimax:global");
+    expect(sessionStore[sessionKey]?.authProfileOverrideSource).toBe("auto");
+  });
+
   it("clears stale auto-created legacy openai-codex route pins when primary is canonical openai", async () => {
     const sessionEntry = makeEntry({
       providerOverride: "openai-codex",

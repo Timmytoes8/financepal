@@ -7,24 +7,42 @@ export type ModelOverrideSelection = {
   isDefault?: boolean;
 };
 
-export function hasAutoRuntimeAuthProfileSelection(
+export function hasStaleAutoRuntimeAuthProfileSelection(
   entry:
     | Pick<
         SessionEntry,
-        "authProfileOverride" | "authProfileOverrideSource" | "providerOverride" | "modelOverride"
+        | "authProfileOverride"
+        | "authProfileOverrideSource"
+        | "providerOverride"
+        | "modelOverride"
+        | "modelProvider"
+        | "model"
       >
     | undefined,
+  expectedSelection: { provider: string; model: string },
 ): boolean {
+  const runtimeProvider = normalizeOptionalString(entry?.modelProvider);
+  const runtimeModel = normalizeOptionalString(entry?.model);
+  const expectedProvider = normalizeOptionalString(expectedSelection.provider);
+  const expectedModel = normalizeOptionalString(expectedSelection.model);
   return (
     entry?.authProfileOverrideSource === "auto" &&
     normalizeOptionalString(entry.authProfileOverride) !== undefined &&
     normalizeOptionalString(entry.providerOverride) === undefined &&
-    normalizeOptionalString(entry.modelOverride) === undefined
+    normalizeOptionalString(entry.modelOverride) === undefined &&
+    runtimeProvider !== undefined &&
+    runtimeModel !== undefined &&
+    expectedProvider !== undefined &&
+    expectedModel !== undefined &&
+    (runtimeProvider !== expectedProvider || runtimeModel !== expectedModel)
   );
 }
 
-export function clearAutoRuntimeAuthProfileSelection(entry: SessionEntry): { updated: boolean } {
-  if (!hasAutoRuntimeAuthProfileSelection(entry)) {
+export function clearStaleAutoRuntimeAuthProfileSelection(
+  entry: SessionEntry,
+  expectedSelection: { provider: string; model: string },
+): { updated: boolean } {
+  if (!hasStaleAutoRuntimeAuthProfileSelection(entry, expectedSelection)) {
     return { updated: false };
   }
 

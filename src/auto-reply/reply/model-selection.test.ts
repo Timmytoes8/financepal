@@ -1250,6 +1250,62 @@ describe("createModelSelectionState auto-failover overrides", () => {
     expect(sessionStore[sessionKey]?.authProfileOverrideSource).toBe("auto");
   });
 
+  it("preserves auto auth state when it matches an inherited parent model override", async () => {
+    authProfileStoreMock.store = {
+      version: 1,
+      profiles: {
+        "anthropic:work": {
+          type: "api_key",
+          provider: "anthropic",
+          key: "primary-key",
+        },
+      },
+    };
+    const parentSessionKey = "agent:main:telegram:direct:parent";
+    const sessionEntry = makeEntry({
+      parentSessionKey,
+      modelProvider: "anthropic",
+      model: "claude-opus-4-6",
+      contextTokens: 200_000,
+      authProfileOverride: "anthropic:work",
+      authProfileOverrideSource: "auto",
+      authProfileOverrideCompactionCount: 1,
+    });
+    const sessionStore = {
+      [sessionKey]: sessionEntry,
+      [parentSessionKey]: makeEntry({
+        providerOverride: "anthropic",
+        modelOverride: "claude-opus-4-6",
+        modelOverrideSource: "user",
+      }),
+    };
+
+    const state = await createModelSelectionState({
+      cfg: {} as OpenClawConfig,
+      agentCfg: undefined,
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+      parentSessionKey,
+      defaultProvider: "minimax",
+      defaultModel: "MiniMax-M2.7",
+      primaryProvider: "minimax",
+      primaryModel: "MiniMax-M2.7",
+      provider: "minimax",
+      model: "MiniMax-M2.7",
+      hasModelDirective: false,
+    });
+
+    expect(state.provider).toBe("anthropic");
+    expect(state.model).toBe("claude-opus-4-6");
+    expect(state.resetModelOverride).toBe(false);
+    expect(sessionStore[sessionKey]?.modelProvider).toBe("anthropic");
+    expect(sessionStore[sessionKey]?.model).toBe("claude-opus-4-6");
+    expect(sessionStore[sessionKey]?.contextTokens).toBe(200_000);
+    expect(sessionStore[sessionKey]?.authProfileOverride).toBe("anthropic:work");
+    expect(sessionStore[sessionKey]?.authProfileOverrideSource).toBe("auto");
+  });
+
   it("preserves runtime-equivalent OpenAI Codex auto auth selections", async () => {
     authProfileStoreMock.store = {
       version: 1,

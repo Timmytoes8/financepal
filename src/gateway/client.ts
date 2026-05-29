@@ -181,10 +181,10 @@ export function resolveGatewayClientConnectChallengeTimeoutMs(
 }
 
 export class GatewayClient {
-  #client: BaseGatewayClient;
+  private client: BaseGatewayClient;
 
   constructor(opts: GatewayClientOptions) {
-    this.#client = new BaseGatewayClient({
+    this.client = new BaseGatewayClient({
       ...opts,
       clientVersion: opts.clientVersion ?? VERSION,
       hostDeps: createOpenClawGatewayClientHostDeps(opts.hostDeps),
@@ -192,15 +192,15 @@ export class GatewayClient {
   }
 
   start(): void {
-    this.#client.start();
+    this.client.start();
   }
 
   stop(): void {
-    this.#client.stop();
+    this.client.stop();
   }
 
   stopAndWait(opts?: { timeoutMs?: number }): Promise<void> {
-    return this.#client.stopAndWait(opts);
+    return this.client.stopAndWait(opts);
   }
 
   request<T = Record<string, unknown>>(
@@ -208,7 +208,7 @@ export class GatewayClient {
     params?: unknown,
     opts?: GatewayClientRequestOptions,
   ): Promise<T> {
-    return this.#client.request<T>(method, params, opts);
+    return this.client.request<T>(method, params, opts);
   }
 }
 

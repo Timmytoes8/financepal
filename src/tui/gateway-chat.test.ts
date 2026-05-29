@@ -522,23 +522,14 @@ describe("GatewayChatClient", () => {
       preauthHandshakeTimeoutMs: 30_000,
       allowInsecureLocalOperatorUi: true,
     });
+    const gatewayClient = (client as unknown as { client: unknown }).client;
+    const baseGatewayClient = gatewayClient as { client?: { opts?: Record<string, unknown> } };
+    const options = baseGatewayClient.client?.opts ?? {};
 
-    expect(
-      (client as unknown as { client: { opts: { clientName?: string; mode?: string } } }).client
-        .opts.clientName,
-    ).toBe("openclaw-tui");
-    expect(
-      (client as unknown as { client: { opts: { clientName?: string; mode?: string } } }).client
-        .opts.mode,
-    ).toBe("ui");
-    expect(
-      (client as unknown as { client: { opts: { deviceIdentity?: unknown } } }).client.opts
-        .deviceIdentity,
-    ).toBeUndefined();
-    expect(
-      (client as unknown as { client: { opts: { preauthHandshakeTimeoutMs?: number } } }).client
-        .opts.preauthHandshakeTimeoutMs,
-    ).toBe(30_000);
+    expect(options.clientName).toBe("openclaw-tui");
+    expect(options.mode).toBe("ui");
+    expect(options.deviceIdentity).toBeUndefined();
+    expect(options.preauthHandshakeTimeoutMs).toBe(30_000);
   });
 
   it("surfaces loopback block-mode start failures through disconnect handler", async () => {

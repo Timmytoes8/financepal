@@ -4,6 +4,7 @@ export default createUnitVitestConfigWithOptions(process.env, {
   name: "unit-support",
   includePatterns: ["packages/**/*.test.ts"],
   extraExcludePatterns: [
+    "packages/gateway-client/src/**/*.test.ts",
     // The gateway-protocol package rides with gateway-client because the client
     // package owns the browser/runtime protocol compatibility lane.
     "packages/gateway-protocol/src/**/*.test.ts",

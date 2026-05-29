@@ -346,6 +346,51 @@ describe("wrapStreamFnWithDiagnosticModelCallEvents", () => {
     expect(JSON.stringify(events)).not.toContain("sk-original-secret");
   });
 
+  it("counts text deltas without serializing full partial snapshots", async () => {
+    const serializedPartial = vi.fn(() => {
+      throw new Error("partial snapshot should not be serialized for text deltas");
+    });
+    async function* stream() {
+      yield {
+        type: "text_delta",
+        delta: "a",
+        partial: {
+          toJSON: serializedPartial,
+          role: "assistant",
+          content: [{ type: "text", text: "a".repeat(200_000) }],
+        },
+      };
+      yield {
+        type: "text_delta",
+        delta: "bc",
+        partial: {
+          toJSON: serializedPartial,
+          role: "assistant",
+          content: [{ type: "text", text: "abc".repeat(200_000) }],
+        },
+      };
+    }
+    const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+      (() => stream()) as unknown as StreamFn,
+      {
+        runId: "run-1",
+        provider: "openai",
+        model: "gpt-5.4",
+        trace: createDiagnosticTraceContext(),
+        nextCallId: () => "call-delta-bytes",
+      },
+    );
+
+    const events = await collectModelCallEvents(async () => {
+      await drain(wrapped({} as never, {} as never, {} as never) as AsyncIterable<unknown>);
+    });
+
+    const completedEvent = getEvent(events, 1);
+    expect(completedEvent.type).toBe("model.call.completed");
+    expect(completedEvent.responseStreamBytes).toBe(Buffer.byteLength("abc", "utf8"));
+    expect(serializedPartial).not.toHaveBeenCalled();
+  });
+
   it("captures model input, tools, and output only when content capture is enabled", async () => {
     const assistant = {
       role: "assistant",

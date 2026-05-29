@@ -106,6 +106,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function utf8StringByteLength(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+function streamDeltaByteLength(chunk: Record<string, unknown>): number | undefined {
+  const type = chunk.type;
+  if (
+    (type === "text_delta" || type === "thinking_delta" || type === "toolcall_delta") &&
+    typeof chunk.delta === "string"
+  ) {
+    return utf8StringByteLength(chunk.delta);
+  }
+  return undefined;
+}
+
+function responseStreamChunkByteLength(chunk: unknown): number | undefined {
+  if (!isRecord(chunk)) {
+    return utf8JsonByteLength(chunk);
+  }
+  const deltaBytes = streamDeltaByteLength(chunk);
+  if (deltaBytes !== undefined) {
+    return deltaBytes;
+  }
+  if (!("partial" in chunk)) {
+    return utf8JsonByteLength(chunk);
+  }
+  const { partial: _partial, ...snapshotlessChunk } = chunk;
+  return utf8JsonByteLength(snapshotlessChunk);
+}
+
 function cloneDiagnosticContentValue(value: unknown): unknown {
   try {
     return structuredClone(value);
@@ -157,7 +187,7 @@ function observeResponseChunk(
 ): void {
   state.timeToFirstByteMs ??= Math.max(0, Date.now() - startedAt);
   observeOutputMessageContent(state, chunk);
-  const bytes = utf8JsonByteLength(chunk);
+  const bytes = responseStreamChunkByteLength(chunk);
   if (bytes !== undefined) {
     state.responseStreamBytes += bytes;
   }

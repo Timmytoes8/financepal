@@ -155,7 +155,7 @@ function filterSessionStoreToConfiguredAgents(
 
 function inheritSessionRuntimeSelection(
   parentEntry: SessionEntry | undefined,
-  expectedSelection: { provider: string; model: string },
+  expectedSelection: { provider: string; model: string; config?: OpenClawConfig },
 ): Partial<SessionEntry> {
   if (!parentEntry) {
     return {};
@@ -1454,10 +1454,10 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       }
       const inheritedSelection = normalizeOptionalString(p.model)
         ? {}
-        : inheritSessionRuntimeSelection(
-            parentSessionEntry,
-            resolveSessionModelRef(cfg, parentSessionEntry, parentAgentId ?? targetAgentId),
-          );
+        : inheritSessionRuntimeSelection(parentSessionEntry, {
+            ...resolveSessionModelRef(cfg, parentSessionEntry, parentAgentId ?? targetAgentId),
+            config: cfg,
+          });
       const nextEntry: SessionEntry = {
         ...patched.entry,
         ...inheritedSelection,

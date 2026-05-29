@@ -1,4 +1,6 @@
+import { areRuntimeModelRefsEquivalent } from "../agents/model-runtime-aliases.js";
 import type { SessionEntry } from "../config/sessions.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
 
 export type ModelOverrideSelection = {
@@ -19,12 +21,22 @@ export function hasStaleAutoRuntimeAuthProfileSelection(
         | "model"
       >
     | undefined,
-  expectedSelection: { provider: string; model: string },
+  expectedSelection: { provider: string; model: string; config?: OpenClawConfig },
 ): boolean {
   const runtimeProvider = normalizeOptionalString(entry?.modelProvider);
   const runtimeModel = normalizeOptionalString(entry?.model);
   const expectedProvider = normalizeOptionalString(expectedSelection.provider);
   const expectedModel = normalizeOptionalString(expectedSelection.model);
+  const runtimeMatchesExpected =
+    runtimeProvider !== undefined &&
+    runtimeModel !== undefined &&
+    expectedProvider !== undefined &&
+    expectedModel !== undefined &&
+    areRuntimeModelRefsEquivalent(
+      `${runtimeProvider}/${runtimeModel}`,
+      `${expectedProvider}/${expectedModel}`,
+      { config: expectedSelection.config },
+    );
   return (
     entry?.authProfileOverrideSource === "auto" &&
     normalizeOptionalString(entry.authProfileOverride) !== undefined &&
@@ -34,13 +46,13 @@ export function hasStaleAutoRuntimeAuthProfileSelection(
     runtimeModel !== undefined &&
     expectedProvider !== undefined &&
     expectedModel !== undefined &&
-    (runtimeProvider !== expectedProvider || runtimeModel !== expectedModel)
+    !runtimeMatchesExpected
   );
 }
 
 export function clearStaleAutoRuntimeAuthProfileSelection(
   entry: SessionEntry,
-  expectedSelection: { provider: string; model: string },
+  expectedSelection: { provider: string; model: string; config?: OpenClawConfig },
 ): { updated: boolean } {
   if (!hasStaleAutoRuntimeAuthProfileSelection(entry, expectedSelection)) {
     return { updated: false };

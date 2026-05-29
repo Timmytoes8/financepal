@@ -185,6 +185,7 @@ describe("Feishu bot menu handler", () => {
 
     await onBotMenu(createBotMenuEvent({ eventKey: "quick-actions", timestamp: "1700000000004" }));
     await vi.waitFor(() => {
+      expect(handleFeishuMessageMock).toHaveBeenCalledTimes(1);
       expect(runtime.error).toHaveBeenCalledWith(
         "feishu[default]: error handling bot menu event: FeishuRetryableSyntheticEventError: retry me",
       );

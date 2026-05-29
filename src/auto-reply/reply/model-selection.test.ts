@@ -1109,6 +1109,57 @@ describe("createModelSelectionState auto-failover overrides", () => {
     expect(sessionStore[sessionKey]?.authProfileOverrideSource).toBeUndefined();
   });
 
+  it("repairs legacy runtime-only auto auth fallback state", async () => {
+    authProfileStoreMock.store = {
+      version: 1,
+      profiles: {
+        "deepseek:default": {
+          type: "api_key",
+          provider: "deepseek",
+          key: "fallback-key",
+        },
+        "minimax:global": {
+          type: "api_key",
+          provider: "minimax",
+          key: "primary-key",
+        },
+      },
+    };
+    const sessionEntry = makeEntry({
+      modelProvider: "deepseek",
+      model: "deepseek-v4-flash",
+      contextTokens: 64_000,
+      authProfileOverride: "deepseek:default",
+      authProfileOverrideCompactionCount: 2,
+    });
+    const sessionStore = { [sessionKey]: sessionEntry };
+
+    const state = await createModelSelectionState({
+      cfg: {} as OpenClawConfig,
+      agentCfg: undefined,
+      sessionEntry,
+      sessionStore,
+      sessionKey,
+      defaultProvider: "minimax",
+      defaultModel: "MiniMax-M2.7",
+      primaryProvider: "minimax",
+      primaryModel: "MiniMax-M2.7",
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      hasModelDirective: false,
+    });
+
+    expect(state.provider).toBe("minimax");
+    expect(state.model).toBe("MiniMax-M2.7");
+    expect(state.resetModelOverride).toBe(true);
+    expect(state.resetModelOverrideRef).toBe("deepseek/deepseek-v4-flash");
+    expect(sessionStore[sessionKey]?.modelProvider).toBeUndefined();
+    expect(sessionStore[sessionKey]?.model).toBeUndefined();
+    expect(sessionStore[sessionKey]?.contextTokens).toBeUndefined();
+    expect(sessionStore[sessionKey]?.authProfileOverride).toBeUndefined();
+    expect(sessionStore[sessionKey]?.authProfileOverrideCompactionCount).toBeUndefined();
+  });
+
   it("preserves ordinary auto auth profile rotation when runtime model matches selection", async () => {
     authProfileStoreMock.store = {
       version: 1,

@@ -192,6 +192,44 @@ test("sessions.create does not inherit runtime-only auto auth fallback selection
   expect(created.payload?.entry?.authProfileOverrideSource).toBeUndefined();
 });
 
+test("sessions.create does not inherit legacy runtime-only auto auth fallback selection", async () => {
+  await createSessionStoreDir();
+  await writeSessionStore({
+    entries: {
+      main: sessionStoreEntry("sess-parent", {
+        modelProvider: "deepseek",
+        model: "deepseek-v4-flash",
+        contextTokens: 64000,
+        authProfileOverride: "deepseek:default",
+        authProfileOverrideCompactionCount: 2,
+      }),
+    },
+  });
+
+  const created = await directSessionReq<{
+    entry?: {
+      modelProvider?: string;
+      model?: string;
+      contextTokens?: number;
+      authProfileOverride?: string;
+      authProfileOverrideSource?: string;
+      parentSessionKey?: string;
+    };
+  }>("sessions.create", {
+    agentId: "main",
+    label: "Fresh Chat",
+    parentSessionKey: "main",
+  });
+
+  expect(created.ok).toBe(true);
+  expect(created.payload?.entry?.parentSessionKey).toBe("agent:main:main");
+  expect(created.payload?.entry?.modelProvider).toBeUndefined();
+  expect(created.payload?.entry?.model).toBeUndefined();
+  expect(created.payload?.entry?.contextTokens).toBeUndefined();
+  expect(created.payload?.entry?.authProfileOverride).toBeUndefined();
+  expect(created.payload?.entry?.authProfileOverrideSource).toBeUndefined();
+});
+
 test("sessions.create inherits healthy auto auth runtime selection", async () => {
   await createSessionStoreDir();
   await writeSessionStore({

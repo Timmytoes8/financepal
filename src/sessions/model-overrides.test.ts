@@ -53,6 +53,37 @@ function contextBudgetStatus(params: {
 }
 
 describe("stale auto runtime auth profile selection", () => {
+  it("treats legacy compaction-count auth provenance as auto-owned", () => {
+    const before = Date.now() - 5_000;
+    const entry: SessionEntry = {
+      sessionId: "sess-legacy-auto-auth",
+      updatedAt: before,
+      modelProvider: "deepseek",
+      model: "deepseek-v4-flash",
+      contextTokens: 64_000,
+      authProfileOverride: "deepseek:default",
+      authProfileOverrideCompactionCount: 2,
+    };
+
+    const isStale = hasStaleAutoRuntimeAuthProfileSelection(entry, {
+      provider: "minimax",
+      model: "MiniMax-M2.7",
+    });
+    const result = clearStaleAutoRuntimeAuthProfileSelection(entry, {
+      provider: "minimax",
+      model: "MiniMax-M2.7",
+    });
+
+    expect(isStale).toBe(true);
+    expect(result.updated).toBe(true);
+    expect(entry.modelProvider).toBeUndefined();
+    expect(entry.model).toBeUndefined();
+    expect(entry.contextTokens).toBeUndefined();
+    expect(entry.authProfileOverride).toBeUndefined();
+    expect(entry.authProfileOverrideCompactionCount).toBeUndefined();
+    expect((entry.updatedAt ?? 0) > before).toBe(true);
+  });
+
   it("does not treat runtime-equivalent OpenAI Codex aliases as stale", () => {
     const entry: SessionEntry = {
       sessionId: "sess-openai-codex-alias",

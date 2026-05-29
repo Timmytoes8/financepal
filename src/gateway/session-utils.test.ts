@@ -1468,6 +1468,23 @@ describe("resolveSessionModelRef", () => {
     expect(resolved).toEqual({ provider: "minimax", model: "MiniMax-M2.7" });
   });
 
+  test("ignores legacy runtime-only model fields tied to auto auth fallback", () => {
+    const cfg = createModelDefaultsConfig({
+      primary: "minimax/MiniMax-M2.7",
+    });
+
+    const resolved = resolveSessionModelRef(cfg, {
+      sessionId: "s-legacy-auto-fallback-runtime",
+      updatedAt: Date.now(),
+      modelProvider: "deepseek",
+      model: "deepseek-v4-flash",
+      authProfileOverride: "deepseek:default",
+      authProfileOverrideCompactionCount: 2,
+    });
+
+    expect(resolved).toEqual({ provider: "minimax", model: "MiniMax-M2.7" });
+  });
+
   test("preserves auto auth profile runtime fields when they match the selected model", () => {
     const cfg = createModelDefaultsConfig({
       primary: "minimax/MiniMax-M2.7",

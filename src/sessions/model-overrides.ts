@@ -14,6 +14,7 @@ export function hasStaleAutoRuntimeAuthProfileSelection(
     | Pick<
         SessionEntry,
         | "authProfileOverride"
+        | "authProfileOverrideCompactionCount"
         | "authProfileOverrideSource"
         | "providerOverride"
         | "modelOverride"
@@ -23,8 +24,12 @@ export function hasStaleAutoRuntimeAuthProfileSelection(
     | undefined,
   expectedSelection: { provider: string; model: string; config?: OpenClawConfig },
 ): boolean {
+  const hasAutoAuthProfileSelection =
+    entry?.authProfileOverrideSource === "auto" ||
+    (entry?.authProfileOverrideSource === undefined &&
+      typeof entry?.authProfileOverrideCompactionCount === "number");
   if (
-    entry?.authProfileOverrideSource !== "auto" ||
+    !hasAutoAuthProfileSelection ||
     normalizeOptionalString(entry.authProfileOverride) === undefined ||
     normalizeOptionalString(entry.providerOverride) !== undefined ||
     normalizeOptionalString(entry.modelOverride) !== undefined

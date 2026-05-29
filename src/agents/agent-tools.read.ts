@@ -159,7 +159,7 @@ function truncateReadTextToByteBudget(
   }
 
   if (output) {
-    return { text: output.trimEnd(), outputLines, firstLineExceedsBudget: false };
+    return { text: output, outputLines, firstLineExceedsBudget: false };
   }
 
   return { text: "", outputLines: 0, firstLineExceedsBudget: true };
@@ -386,8 +386,7 @@ async function executeReadWithAdaptivePaging(params: {
   maxBytes: number;
 }): Promise<AgentToolResult<unknown>> {
   const userLimit = params.args.limit;
-  const hasExplicitLimit =
-    typeof userLimit === "number" && Number.isFinite(userLimit) && userLimit > 0;
+  const hasExplicitLimit = typeof userLimit === "number" && Number.isFinite(userLimit);
   if (hasExplicitLimit) {
     return await executeReadPage(params);
   }

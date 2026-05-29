@@ -119,6 +119,28 @@ describe("createOpenClawCodingTools read behavior", () => {
     }
   });
 
+  it("preserves explicit non-positive read limits with small context windows", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-read-small-context-limit-"));
+    await fs.writeFile(path.join(tmpDir, "notes.txt"), "alpha\nbeta\ngamma", "utf8");
+    try {
+      const readTool = createSandboxedReadTool({
+        root: tmpDir,
+        bridge: createHostSandboxFsBridge(tmpDir),
+        modelContextWindowTokens: 16_000,
+      });
+      const result = await readTool.execute("read-small-context-explicit-limit", {
+        path: "notes.txt",
+        limit: -1,
+      });
+
+      expect(extractToolText(result)).toBe(
+        "alpha\n\n[2 more lines in file. Use offset=2 to continue.]",
+      );
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("enforces the small-context read byte cap for long lines", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-read-small-context-long-"));
     const filePath = path.join(tmpDir, "huge.txt");
@@ -142,6 +164,32 @@ describe("createOpenClawCodingTools read behavior", () => {
       expect(Buffer.byteLength(text, "utf8")).toBeLessThanOrEqual(8 * 1024);
       expect(text).not.toContain("line-0128");
       expect(text).not.toContain("line-8000");
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves whitespace-only lines before capped continuation guidance", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-read-small-context-space-"));
+    const filePath = path.join(tmpDir, "huge.txt");
+    const whitespaceLines = Array.from({ length: 5000 }, () => "   ");
+    await fs.writeFile(filePath, `${whitespaceLines.join("\n")}\nvisible`, "utf8");
+    try {
+      const readTool = createSandboxedReadTool({
+        root: tmpDir,
+        bridge: createHostSandboxFsBridge(tmpDir),
+        modelContextWindowTokens: 16_000,
+      });
+      const result = await readTool.execute("read-small-context-space-cap", {
+        path: "huge.txt",
+      });
+      const text = extractToolText(result);
+      const noticeIndex = text.indexOf("[Read output capped at 8KB");
+      const emittedBeforeNotice = text.slice(0, noticeIndex);
+
+      expect(noticeIndex).toBeGreaterThan(0);
+      expect(emittedBeforeNotice).toMatch(/^ {3}\n/);
+      expect(emittedBeforeNotice).toContain("\n   \n");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -205,6 +253,7 @@ describe("createOpenClawCodingTools read behavior", () => {
             text: content,
           },
         ],
+        details: {},
       };
     });
     const readTool = createOpenClawReadTool(

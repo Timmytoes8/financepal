@@ -2257,8 +2257,11 @@ describe("TelegramPollingSession", () => {
     });
 
     try {
-      await writeSpooledTestUpdates(tempDir, [topicUpdate(42, 10, "wedged topic 10 turn")]);
-      const { runPromise, stopWorker } = startIsolatedIngressSession({
+      await writeSpooledTestUpdates(tempDir, [
+        topicUpdate(42, 10, "wedged topic 10 turn"),
+        topicUpdate(43, 10, "later topic 10 turn"),
+      ]);
+      const { bot, runPromise, stopWorker } = startIsolatedIngressSession({
         abort,
         spoolDir: tempDir,
         spooledUpdateHandlerTimeoutMs: 100,
@@ -2268,6 +2271,7 @@ describe("TelegramPollingSession", () => {
         },
       });
 
+      await vi.waitFor(() => expect(bot.handleUpdate).toHaveBeenCalledTimes(1));
       await vi.advanceTimersByTimeAsync(150);
       await vi.waitFor(() => {
         expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), MAX_TIMER_TIMEOUT_MS);

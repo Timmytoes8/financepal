@@ -811,7 +811,7 @@ export const nodeHandlers: GatewayRequestHandlers = {
       const quarantinedNodeMatchesApprovedDevice =
         normalizeOptionalString(quarantinedNode?.client.connect.device?.id) === approvedDeviceId;
       const updatedNode =
-        quarantinedNode && quarantinedNodeMatchesApprovedDevice
+        quarantinedNode && approvedDeviceId && quarantinedNodeMatchesApprovedDevice
           ? context.nodeRegistry.adoptNodeId(approvedDeviceId, approvedNode.nodeId, approvedSurface)
           : liveNodeMatchesApprovedDevice
             ? context.nodeRegistry.updateSurface(approvedNode.nodeId, approvedSurface)

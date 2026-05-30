@@ -10,6 +10,7 @@ async function withPackageManagerRoot<T>(
 ): Promise<T> {
   return await withTempDir({ prefix: "openclaw-detect-pm-" }, async (root) => {
     for (const file of files) {
+      await fs.mkdir(path.dirname(path.join(root, file.path)), { recursive: true });
       await fs.writeFile(path.join(root, file.path), file.content, "utf8");
     }
     return await run(root);
@@ -41,6 +42,75 @@ describe("detectPackageManager", () => {
     );
   });
 
+  it("preserves pnpm-owned package roots that also carry shrinkwrap", async () => {
+    await withTempDir({ prefix: "openclaw-detect-pm-pnpm-" }, async (base) => {
+      const root = path.join(base, "5", "node_modules", "openclaw");
+      await fs.mkdir(root, { recursive: true });
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@10.8.1" }),
+        "utf8",
+      );
+      await fs.writeFile(path.join(root, "npm-shrinkwrap.json"), "", "utf8");
+      await fs.writeFile(path.join(base, "5", "node_modules", ".modules.yaml"), "", "utf8");
+      await fs.writeFile(path.join(base, "5", "pnpm-lock.yaml"), "", "utf8");
+
+      await expect(detectPackageManager(root)).resolves.toBe("pnpm");
+    });
+  });
+
+  it("preserves pnpm virtual-store package roots that also carry shrinkwrap", async () => {
+    await withTempDir({ prefix: "openclaw-detect-pm-pnpm-store-" }, async (base) => {
+      const root = path.join(
+        base,
+        "5",
+        "node_modules",
+        ".pnpm",
+        "openclaw@1.0.0",
+        "node_modules",
+        "openclaw",
+      );
+      await fs.mkdir(root, { recursive: true });
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@10.8.1" }),
+        "utf8",
+      );
+      await fs.writeFile(path.join(root, "npm-shrinkwrap.json"), "", "utf8");
+      await fs.writeFile(path.join(base, "5", "node_modules", ".modules.yaml"), "", "utf8");
+      await fs.writeFile(path.join(base, "5", "pnpm-lock.yaml"), "", "utf8");
+
+      await expect(detectPackageManager(root)).resolves.toBe("pnpm");
+    });
+  });
+
+  it("preserves bun-owned package roots that also carry shrinkwrap", async () => {
+    const previousBunInstall = process.env.BUN_INSTALL;
+    await withTempDir({ prefix: "openclaw-detect-pm-bun-" }, async (base) => {
+      process.env.BUN_INSTALL = path.join(base, ".bun");
+      const root = path.join(
+        process.env.BUN_INSTALL,
+        "install",
+        "global",
+        "node_modules",
+        "openclaw",
+      );
+      await fs.mkdir(root, { recursive: true });
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ packageManager: "bun@1.2.0" }),
+        "utf8",
+      );
+      await fs.writeFile(path.join(root, "npm-shrinkwrap.json"), "", "utf8");
+
+      await expect(detectPackageManager(root)).resolves.toBe("bun");
+    });
+    if (previousBunInstall === undefined) {
+      delete process.env.BUN_INSTALL;
+    } else {
+      process.env.BUN_INSTALL = previousBunInstall;
+    }
+  });
   it("keeps packageManager precedence for git roots that also carry shrinkwrap", async () => {
     await withPackageManagerRoot(
       [

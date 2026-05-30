@@ -465,6 +465,52 @@ describe("exec approvals CLI", () => {
     expect(runtimeErrors).toHaveLength(0);
   });
 
+  it("preserves explicit empty host-native node approval rules with a default action", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-native-approvals-"));
+    const policyPath = path.join(dir, "policy.json");
+    fs.writeFileSync(policyPath, JSON.stringify({ defaultAction: "deny", rules: [] }));
+
+    callGatewayFromCli.mockImplementation(
+      async (method: string, _opts: unknown, params?: unknown) => {
+        if (method === "exec.approvals.node.get") {
+          return {
+            enabled: true,
+            hash: "native-hash-1",
+            baseHash: "native-hash-1",
+            defaultAction: "deny",
+            rules: [{ pattern: "echo *", action: "allow", enabled: true }],
+          } as never;
+        }
+        return { method, params } as never;
+      },
+    );
+
+    try {
+      await runApprovalsCommand([
+        "approvals",
+        "set",
+        "--node",
+        "macbook",
+        "--file",
+        policyPath,
+        "--json",
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    expect(callGatewayFromCli.mock.calls[1]?.[0]).toBe("exec.approvals.node.set");
+    expect(callGatewayFromCli.mock.calls[1]?.[2]).toEqual({
+      nodeId: "node-1",
+      native: {
+        defaultAction: "deny",
+        rules: [],
+      },
+      baseHash: "native-hash-1",
+    });
+    expect(runtimeErrors).toHaveLength(0);
+  });
+
   it("rejects empty host-native node approval rule lists without a default action", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-native-approvals-"));
     const policyPath = path.join(dir, "policy.json");

@@ -173,14 +173,15 @@ function normalizeNativeExecApprovalPolicyInput(value: unknown): NativeExecAppro
         return nextRule;
       })
     : undefined;
-  const nonEmptyRules = rules && rules.length > 0 ? rules : undefined;
-  if (!defaultAction && !nonEmptyRules) {
+  const hasRulesField = Array.isArray(rulesRaw);
+  const hasNonEmptyRules = !!rules && rules.length > 0;
+  if (!defaultAction && !hasNonEmptyRules) {
     exitWithError("Host-native exec approvals JSON must include defaultAction or rules.");
   }
   return {
     ...(typeof record.enabled === "boolean" ? { enabled: record.enabled } : {}),
     ...(defaultAction ? { defaultAction } : {}),
-    ...(nonEmptyRules ? { rules: nonEmptyRules } : {}),
+    ...(hasRulesField ? { rules: rules ?? [] } : {}),
   };
 }
 
@@ -253,20 +254,20 @@ async function saveSnapshotTargeted(params: {
   baseHash: string;
   targetLabel: string;
 }): Promise<void> {
-  const next =
-    params.source === "local"
-      ? saveSnapshotLocal(params.file ?? { version: 1 })
-      : params.native
-        ? await (async () => {
-            await saveSnapshotNative(params.opts, params.nodeId, params.native, params.baseHash);
-            return await loadSnapshot(params.opts, params.nodeId);
-          })()
-        : await saveSnapshot(
-            params.opts,
-            params.nodeId,
-            params.file ?? { version: 1 },
-            params.baseHash,
-          );
+  let next: ExecApprovalsSnapshot;
+  if (params.source === "local") {
+    next = saveSnapshotLocal(params.file ?? { version: 1 });
+  } else if (params.native) {
+    await saveSnapshotNative(params.opts, params.nodeId, params.native, params.baseHash);
+    next = await loadSnapshot(params.opts, params.nodeId);
+  } else {
+    next = await saveSnapshot(
+      params.opts,
+      params.nodeId,
+      params.file ?? { version: 1 },
+      params.baseHash,
+    );
+  }
   if (params.opts.json) {
     defaultRuntime.writeJson(next, 0);
     return;

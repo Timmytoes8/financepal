@@ -15,13 +15,14 @@ import {
   type ExecApprovalsFile,
   type ExecApprovalsSnapshot,
 } from "../../infra/exec-approvals.js";
+import { isNodeCommandAllowed, resolveNodeCommandAllowlist } from "../node-command-policy.js";
 import { resolveBaseHashParam } from "./base-hash.js";
 import {
   respondUnavailableOnNodeInvokeError,
   respondUnavailableOnThrow,
   safeParseJson,
 } from "./nodes.helpers.js";
-import type { GatewayRequestHandlers, RespondFn } from "./types.js";
+import type { GatewayRequestContext, GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
 type NativeExecApprovalRule = {
@@ -109,6 +110,42 @@ function resolveNodeIdOrRespond(nodeId: string, respond: RespondFn): string | nu
   return id;
 }
 
+function ensureNodeCommandAllowed(params: {
+  context: GatewayRequestContext;
+  nodeId: string;
+  command: string;
+  respond: RespondFn;
+}): boolean {
+  const nodeSession = params.context.nodeRegistry.get(params.nodeId);
+  if (!nodeSession) {
+    return true;
+  }
+  const allowlist = resolveNodeCommandAllowlist(params.context.getRuntimeConfig(), {
+    ...nodeSession,
+    approvedCommands: nodeSession.commands,
+  });
+  const allowed = isNodeCommandAllowed({
+    command: params.command,
+    declaredCommands: nodeSession.commands,
+    allowlist,
+  });
+  if (allowed.ok) {
+    return true;
+  }
+  params.respond(
+    false,
+    undefined,
+    errorShape(
+      ErrorCodes.INVALID_REQUEST,
+      `node command not allowed: "${params.command}" is not approved for node "${params.nodeId}"`,
+      {
+        details: { reason: allowed.reason, command: params.command },
+      },
+    ),
+  );
+  return false;
+}
+
 export const execApprovalsHandlers: GatewayRequestHandlers = {
   "exec.approvals.get": ({ params, respond }) => {
     if (!assertValidParams(params, validateExecApprovalsGetParams, "exec.approvals.get", respond)) {
@@ -158,6 +195,16 @@ export const execApprovalsHandlers: GatewayRequestHandlers = {
     if (!id) {
       return;
     }
+    if (
+      !ensureNodeCommandAllowed({
+        context,
+        nodeId: id,
+        command: "system.execApprovals.get",
+        respond,
+      })
+    ) {
+      return;
+    }
     await respondUnavailableOnThrow(respond, async () => {
       const res = await context.nodeRegistry.invoke({
         nodeId: id,
@@ -190,6 +237,16 @@ export const execApprovalsHandlers: GatewayRequestHandlers = {
     };
     const id = resolveNodeIdOrRespond(nodeId, respond);
     if (!id) {
+      return;
+    }
+    if (
+      !ensureNodeCommandAllowed({
+        context,
+        nodeId: id,
+        command: "system.execApprovals.set",
+        respond,
+      })
+    ) {
       return;
     }
     await respondUnavailableOnThrow(respond, async () => {

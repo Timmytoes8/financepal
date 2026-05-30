@@ -467,6 +467,29 @@ describe("node.invoke approval bypass", () => {
     }
   });
 
+  test("rejects dedicated node exec-approval mutations before forwarding when unapproved", async () => {
+    let sawInvoke = false;
+    const node = await connectLinuxNode(() => {
+      sawInvoke = true;
+    });
+    const ws = await connectOperator(["operator.admin"]);
+    try {
+      const nodeId = await getConnectedNodeId(ws);
+      const res = await rpcReq(ws, "exec.approvals.node.set", {
+        nodeId,
+        native: { enabled: true, defaultAction: "deny", rules: [] },
+        baseHash: "stale",
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.error?.message ?? "").toContain("node command not allowed");
+      await expectNoForwardedInvoke(() => sawInvoke);
+    } finally {
+      ws.close();
+      node.stop();
+    }
+  });
+
   test("rejects browser.proxy persistent profile mutations before forwarding", async () => {
     let sawInvoke = false;
     const node = await connectLinuxNode(

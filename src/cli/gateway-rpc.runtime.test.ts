@@ -53,4 +53,41 @@ describe("callGatewayFromCliRuntime", () => {
       }),
     );
   });
+
+  it("uses backend auth for explicit loopback token calls", async () => {
+    await callGatewayFromCliRuntime("health", {
+      url: "ws://127.0.0.1:18789",
+      token: "shared-token",
+    });
+
+    expect(callGatewayMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "health",
+        clientName: "gateway-client",
+        mode: "backend",
+        deviceIdentity: null,
+      }),
+    );
+  });
+
+  it("preserves explicit extra client identity overrides", async () => {
+    await callGatewayFromCliRuntime(
+      "health",
+      {
+        url: "ws://127.0.0.1:18789",
+        token: "shared-token",
+      },
+      undefined,
+      { clientName: "cli", mode: "cli", deviceIdentity: undefined },
+    );
+
+    expect(callGatewayMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "health",
+        clientName: "cli",
+        mode: "cli",
+        deviceIdentity: undefined,
+      }),
+    );
+  });
 });

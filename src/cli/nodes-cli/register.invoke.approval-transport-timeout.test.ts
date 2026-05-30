@@ -61,6 +61,42 @@ describe("exec approval transport timeout (#12098)", () => {
     expect(callOpts.timeoutMs).toBe(35_000);
   });
 
+  it("callGatewayCli uses backend auth for explicit loopback token calls", async () => {
+    await callGatewayCli("node.list", {
+      url: "ws://127.0.0.1:18789",
+      token: "shared-token",
+    } as never);
+
+    expect(callGatewaySpy).toHaveBeenCalledTimes(1);
+    expect(firstGatewayCall()).toMatchObject({
+      method: "node.list",
+      clientName: "gateway-client",
+      mode: "backend",
+      deviceIdentity: null,
+    });
+  });
+
+  it("callNodePairApprovalGatewayCli omits device identity for explicit loopback token calls", async () => {
+    await callNodePairApprovalGatewayCli(
+      "node.pair.list",
+      {
+        url: "ws://127.0.0.1:18789",
+        token: "shared-token",
+      } as never,
+      {},
+      { scopes: ["operator.pairing"] },
+    );
+
+    expect(callGatewaySpy).toHaveBeenCalledTimes(1);
+    expect(firstGatewayCall()).toMatchObject({
+      method: "node.pair.list",
+      clientName: "gateway-client",
+      mode: "backend",
+      deviceIdentity: null,
+      scopes: ["operator.pairing"],
+    });
+  });
+
   it("callGatewayCli rejects invalid opts.timeout instead of forwarding NaN", async () => {
     await expect(
       callGatewayCli("exec.approval.request", { timeout: "nope" } as never, {

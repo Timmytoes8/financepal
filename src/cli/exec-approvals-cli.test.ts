@@ -359,6 +359,50 @@ describe("exec approvals CLI", () => {
     );
   });
 
+  it("keeps host-native node approvals output without local policy math", async () => {
+    callGatewayFromCli.mockImplementation(
+      async (method: string, _opts: unknown, params?: unknown) => {
+        if (method === "config.get") {
+          return {
+            config: {
+              tools: {
+                exec: {
+                  security: "full",
+                  ask: "off",
+                },
+              },
+            },
+          };
+        }
+        if (method === "exec.approvals.node.get") {
+          return {
+            enabled: true,
+            hash: "native-hash-1",
+            baseHash: "native-hash-1",
+            defaultAction: "deny",
+            rules: [
+              { pattern: "echo *", action: "allow", enabled: true },
+              { pattern: "Start-Process *", action: "deny", enabled: true },
+            ],
+          } as never;
+        }
+        return { method, params };
+      },
+    );
+
+    await runApprovalsCommand(["approvals", "get", "--node", "macbook", "--json"]);
+
+    const output = writtenJson();
+    expect(defaultRuntime.writeJson).toHaveBeenCalledWith(output, 0);
+    expect(output.defaultAction).toBe("deny");
+    expect(requireArray(output.rules, "rules")).toHaveLength(2);
+    expect(effectivePolicy(output)).toEqual({
+      note: "Node exposes a host-native exec policy. The node enforces its own rules; local approvals-file effective-policy math does not apply.",
+      scopes: [],
+    });
+    expect(runtimeErrors).toHaveLength(0);
+  });
+
   it("keeps gateway approvals output when config.get fails", async () => {
     callGatewayFromCli.mockImplementation(
       async (method: string, _opts: unknown, params?: unknown) => {

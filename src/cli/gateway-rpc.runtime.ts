@@ -3,6 +3,7 @@ import {
   GATEWAY_CLIENT_NAMES,
 } from "../../packages/gateway-protocol/src/client-info.js";
 import { callGateway } from "../gateway/call.js";
+import { shouldUseDirectLoopbackGatewayAuth } from "./direct-loopback-gateway-auth.js";
 import type { GatewayRpcOpts } from "./gateway-rpc.types.js";
 import { parseTimeoutMsWithFallback } from "./parse-timeout.js";
 import { withProgress } from "./progress.js";
@@ -25,6 +26,11 @@ export async function callGatewayFromCliRuntime(
   extra?: CallGatewayFromCliRuntimeExtra,
 ) {
   const showProgress = extra?.progress ?? opts.json !== true;
+  const useDirectAuth =
+    shouldUseDirectLoopbackGatewayAuth(opts) &&
+    extra?.clientName === undefined &&
+    extra?.mode === undefined &&
+    extra?.deviceIdentity === undefined;
   return await withProgress(
     {
       label: `Gateway ${method}`,
@@ -37,12 +43,20 @@ export async function callGatewayFromCliRuntime(
         token: opts.token,
         method,
         params,
-        deviceIdentity: extra?.deviceIdentity,
+        deviceIdentity:
+          extra?.deviceIdentity !== undefined
+            ? extra.deviceIdentity
+            : useDirectAuth
+              ? null
+              : undefined,
         expectFinal: extra?.expectFinal ?? Boolean(opts.expectFinal),
         scopes: extra?.scopes,
         timeoutMs: parseTimeoutMsWithFallback(opts.timeout, DEFAULT_GATEWAY_RPC_TIMEOUT_MS),
-        clientName: extra?.clientName ?? GATEWAY_CLIENT_NAMES.CLI,
-        mode: extra?.mode ?? GATEWAY_CLIENT_MODES.CLI,
+        clientName:
+          extra?.clientName ??
+          (useDirectAuth ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT : GATEWAY_CLIENT_NAMES.CLI),
+        mode:
+          extra?.mode ?? (useDirectAuth ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI),
       }),
   );
 }

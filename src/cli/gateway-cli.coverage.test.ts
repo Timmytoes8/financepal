@@ -158,6 +158,29 @@ describe("gateway-cli coverage", () => {
     expect(runtimeLogs.join("\n")).toContain('"ok": true');
   });
 
+  it("uses backend auth for explicit loopback token gateway calls", async () => {
+    callGateway.mockClear();
+
+    await runGatewayCommand([
+      "gateway",
+      "call",
+      "health",
+      "--url",
+      "ws://127.0.0.1:18789",
+      "--token",
+      "shared-token",
+      "--json",
+    ]);
+
+    expect(callGateway).toHaveBeenCalledTimes(1);
+    expect(firstMockArg(callGateway)).toMatchObject({
+      method: "health",
+      clientName: "gateway-client",
+      mode: "backend",
+      deviceIdentity: null,
+    });
+  });
+
   it("registers gateway probe and routes to gatewayStatusCommand", async () => {
     gatewayStatusCommand.mockClear();
 

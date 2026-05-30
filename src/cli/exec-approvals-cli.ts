@@ -26,14 +26,26 @@ import type { NodesRpcOpts } from "./nodes-cli/types.js";
 import { applyParentDefaultHelpAction } from "./program/parent-default-help.js";
 
 type ExecApprovalsSnapshot = {
-  path: string;
-  exists: boolean;
-  hash: string;
-  file: ExecApprovalsFile;
+  path?: string;
+  exists?: boolean;
+  hash?: string;
+  baseHash?: string;
+  file?: ExecApprovalsFile;
+  enabled?: boolean;
+  defaultAction?: string;
+  rules?: NativeExecApprovalRule[];
+  constraints?: Record<string, unknown>;
 };
 
 type ConfigSnapshotLike = {
   config?: OpenClawConfig;
+};
+type NativeExecApprovalRule = {
+  pattern?: string;
+  action?: string;
+  shells?: string[];
+  description?: string;
+  enabled?: boolean;
 };
 type ConfigLoadResult = {
   config: OpenClawConfig | null;
@@ -93,6 +105,20 @@ function loadSnapshotLocal(): ExecApprovalsSnapshot {
   };
 }
 
+function hasApprovalsFile(
+  snapshot: ExecApprovalsSnapshot,
+): snapshot is ExecApprovalsSnapshot & { file: ExecApprovalsFile } {
+  return !!snapshot.file && typeof snapshot.file === "object" && !Array.isArray(snapshot.file);
+}
+
+function isNativeExecApprovalsSnapshot(snapshot: ExecApprovalsSnapshot): boolean {
+  return (
+    Array.isArray(snapshot.rules) ||
+    typeof snapshot.defaultAction === "string" ||
+    typeof snapshot.enabled === "boolean"
+  );
+}
+
 function saveSnapshotLocal(file: ExecApprovalsFile): ExecApprovalsSnapshot {
   saveExecApprovals(file);
   return loadSnapshotLocal();
@@ -140,6 +166,11 @@ async function loadWritableSnapshotTarget(opts: ExecApprovalsCliOpts): Promise<{
   const baseHash = snapshot.hash;
   if (!baseHash) {
     exitWithError("Exec approvals hash missing; reload and retry.");
+  }
+  if (!hasApprovalsFile(snapshot)) {
+    exitWithError(
+      "This node exposes a host-native exec policy. Editing it through approvals set/allowlist is not supported yet.",
+    );
   }
   return { snapshot, nodeId, source, targetLabel, baseHash };
 }
@@ -199,13 +230,22 @@ async function loadConfigForApprovalsTarget(params: {
 function buildEffectivePolicyReport(params: {
   configLoad: ConfigLoadResult;
   source: ApprovalsTargetSource;
-  approvals: ExecApprovalsFile;
+  approvals?: ExecApprovalsFile;
   hostPath: string;
+  nativePolicy: boolean;
 }): EffectivePolicyReport {
   const cfg = params.configLoad.config;
   const timeoutNote = params.configLoad.timedOut
     ? "Config fetch timed out. Re-run with a higher --timeout to inspect Effective Policy."
     : null;
+  if (!params.approvals) {
+    return {
+      scopes: [],
+      note: params.nativePolicy
+        ? "Node exposes a host-native exec policy. The node enforces its own rules; local approvals-file effective-policy math does not apply."
+        : "Approvals file unavailable.",
+    };
+  }
   if (params.source === "node") {
     if (!cfg) {
       return {
@@ -278,6 +318,10 @@ function renderEffectivePolicy(params: { report: EffectivePolicyReport }) {
 }
 
 function renderApprovalsSnapshot(snapshot: ExecApprovalsSnapshot, targetLabel: string) {
+  if (!hasApprovalsFile(snapshot) && isNativeExecApprovalsSnapshot(snapshot)) {
+    renderNativeExecPolicySnapshot(snapshot, targetLabel);
+    return;
+  }
   const rich = isRich();
   const heading = (text: string) => (rich ? theme.heading(text) : text);
   const muted = (text: string) => (rich ? theme.muted(text) : text);
@@ -316,9 +360,9 @@ function renderApprovalsSnapshot(snapshot: ExecApprovalsSnapshot, targetLabel: s
 
   const summaryRows = [
     { Field: "Target", Value: targetLabel },
-    { Field: "Path", Value: snapshot.path },
+    { Field: "Path", Value: snapshot.path ?? "unknown" },
     { Field: "Exists", Value: snapshot.exists ? "yes" : "no" },
-    { Field: "Hash", Value: snapshot.hash },
+    { Field: "Hash", Value: snapshot.hash ?? "unknown" },
     { Field: "Version", Value: String(file.version ?? 1) },
     { Field: "Socket", Value: file.socket?.path ?? "default" },
     { Field: "Defaults", Value: defaultsParts.length > 0 ? defaultsParts.join(", ") : "none" },
@@ -453,6 +497,66 @@ async function runAllowlistMutation(
   }
 }
 
+function renderNativeExecPolicySnapshot(snapshot: ExecApprovalsSnapshot, targetLabel: string) {
+  const rich = isRich();
+  const heading = (text: string) => (rich ? theme.heading(text) : text);
+  const muted = (text: string) => (rich ? theme.muted(text) : text);
+  const tableWidth = getTerminalTableWidth();
+  const rules = Array.isArray(snapshot.rules) ? snapshot.rules : [];
+  const summaryRows = [
+    { Field: "Target", Value: targetLabel },
+    { Field: "Kind", Value: "host-native" },
+    {
+      Field: "Enabled",
+      Value: typeof snapshot.enabled === "boolean" ? (snapshot.enabled ? "yes" : "no") : "unknown",
+    },
+    { Field: "Default Action", Value: snapshot.defaultAction ?? "unknown" },
+    { Field: "Hash", Value: snapshot.hash ?? snapshot.baseHash ?? "unknown" },
+    { Field: "Rules", Value: String(rules.length) },
+  ];
+
+  defaultRuntime.log(heading("Approvals"));
+  defaultRuntime.log(
+    renderTable({
+      width: tableWidth,
+      columns: [
+        { key: "Field", header: "Field", minWidth: 8 },
+        { key: "Value", header: "Value", minWidth: 24, flex: true },
+      ],
+      rows: summaryRows,
+    }).trimEnd(),
+  );
+
+  if (rules.length === 0) {
+    defaultRuntime.log("");
+    defaultRuntime.log(muted("No host-native rules."));
+    return;
+  }
+
+  defaultRuntime.log("");
+  defaultRuntime.log(heading("Host Rules"));
+  defaultRuntime.log(
+    renderTable({
+      width: tableWidth,
+      columns: [
+        { key: "Pattern", header: "Pattern", minWidth: 20, flex: true },
+        { key: "Action", header: "Action", minWidth: 8 },
+        { key: "Shells", header: "Shells", minWidth: 12 },
+        { key: "Enabled", header: "Enabled", minWidth: 8 },
+        { key: "Description", header: "Description", minWidth: 16, flex: true },
+      ],
+      rows: rules.map((rule) => ({
+        Pattern: rule.pattern ?? "",
+        Action: rule.action ?? "",
+        Shells:
+          Array.isArray(rule.shells) && rule.shells.length > 0 ? rule.shells.join(",") : "all",
+        Enabled: rule.enabled === false ? "no" : "yes",
+        Description: rule.description ?? "",
+      })),
+    }).trimEnd(),
+  );
+}
+
 function registerAllowlistMutationCommand(params: {
   allowlist: Command;
   name: "add" | "remove";
@@ -499,7 +603,8 @@ export function registerExecApprovalsCli(program: Command) {
           configLoad,
           source,
           approvals: snapshot.file,
-          hostPath: snapshot.path,
+          hostPath: snapshot.path ?? "node host policy",
+          nativePolicy: isNativeExecApprovalsSnapshot(snapshot),
         });
         if (opts.json) {
           defaultRuntime.writeJson({ ...snapshot, effectivePolicy }, 0);

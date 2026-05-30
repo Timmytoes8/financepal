@@ -160,6 +160,64 @@ function hasGatewayMethod(method: string): boolean {
   });
 }
 
+describe("devices cli gateway auth", () => {
+  it("omits persisted device identity for explicit loopback token auth", async () => {
+    callGateway.mockResolvedValueOnce({ pending: [], paired: [] });
+
+    await runDevicesCommand([
+      "list",
+      "--url",
+      "ws://127.0.0.1:18789",
+      "--token",
+      "shared-token",
+      "--json",
+    ]);
+
+    expectGatewayCall(0, {
+      method: "device.pair.list",
+      token: "shared-token",
+      clientName: "gateway-client",
+      mode: "backend",
+      deviceIdentity: null,
+    });
+  });
+
+  it("omits persisted device identity for implicit local token auth", async () => {
+    callGateway.mockResolvedValueOnce({ pending: [], paired: [] });
+
+    await runDevicesCommand(["list", "--token", "shared-token", "--json"]);
+
+    expectGatewayCall(0, {
+      method: "device.pair.list",
+      token: "shared-token",
+      clientName: "gateway-client",
+      mode: "backend",
+      deviceIdentity: null,
+    });
+  });
+
+  it("keeps device identity available for explicit remote token auth", async () => {
+    callGateway.mockResolvedValueOnce({ pending: [], paired: [] });
+
+    await runDevicesCommand([
+      "list",
+      "--url",
+      "ws://10.42.1.7:18789",
+      "--token",
+      "shared-token",
+      "--json",
+    ]);
+
+    expectGatewayCall(0, {
+      method: "device.pair.list",
+      token: "shared-token",
+      clientName: "cli",
+      mode: "cli",
+      deviceIdentity: undefined,
+    });
+  });
+});
+
 describe("devices cli approve", () => {
   it("uses admin scope when approving an admin-scope request", async () => {
     callGateway

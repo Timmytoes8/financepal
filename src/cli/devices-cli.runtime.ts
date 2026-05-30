@@ -38,6 +38,7 @@ import {
   type PendingDeviceApprovalKind,
 } from "../shared/device-pairing-access.js";
 import { formatCliCommand } from "./command-format.js";
+import { shouldUseDirectLoopbackGatewayAuth } from "./direct-loopback-gateway-auth.js";
 import { parseTimeoutMsWithFallback } from "./parse-timeout.js";
 import { withProgress } from "./progress.js";
 
@@ -124,18 +125,21 @@ const callGatewayCli = async (
       indeterminate: true,
       enabled: opts.json !== true,
     },
-    async () =>
-      await callGateway({
+    async () => {
+      const useDirectAuth = shouldUseDirectLoopbackGatewayAuth(opts);
+      return await callGateway({
         url: opts.url,
         token: opts.token,
         password: opts.password,
         method,
         params,
         timeoutMs: parseTimeoutMsWithFallback(opts.timeout, DEFAULT_DEVICES_TIMEOUT_MS),
-        clientName: GATEWAY_CLIENT_NAMES.CLI,
-        mode: GATEWAY_CLIENT_MODES.CLI,
+        clientName: useDirectAuth ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT : GATEWAY_CLIENT_NAMES.CLI,
+        mode: useDirectAuth ? GATEWAY_CLIENT_MODES.BACKEND : GATEWAY_CLIENT_MODES.CLI,
         scopes: callOpts?.scopes,
-      }),
+        deviceIdentity: useDirectAuth ? null : undefined,
+      });
+    },
   );
 
 function normalizeErrorMessage(error: unknown): string {

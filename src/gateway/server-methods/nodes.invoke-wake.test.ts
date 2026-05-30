@@ -387,6 +387,7 @@ describe("node.pair.request", () => {
     await nodeHandlers["node.pair.request"]({
       params: {
         nodeId: "ios-node-1",
+        deviceId: "device-1",
         commands: ["canvas.snapshot"],
         permissions: { camera: true },
       },
@@ -399,6 +400,7 @@ describe("node.pair.request", () => {
 
     expect(mocks.requestNodePairing).toHaveBeenCalledWith({
       nodeId: "ios-node-1",
+      deviceId: "device-1",
       displayName: undefined,
       platform: undefined,
       version: undefined,

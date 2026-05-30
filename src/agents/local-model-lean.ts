@@ -1,9 +1,22 @@
+import type { LocalModelLeanProfile } from "../config/types.agent-defaults.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "./agent-scope-config.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
 
-const LOCAL_MODEL_LEAN_DENY_TOOL_NAMES = new Set(["browser", "cron", "message"]);
+const DEFAULT_LOCAL_MODEL_LEAN_PROFILE = "basic" satisfies LocalModelLeanProfile;
+const LOCAL_MODEL_LEAN_BASIC_DENY_TOOL_NAMES = new Set(["browser", "cron", "message"]);
+const LOCAL_MODEL_LEAN_STRICT_ALLOW_TOOL_NAMES = new Set([
+  "read",
+  "write",
+  "edit",
+  "exec",
+  "wait",
+  "apply_patch",
+  "process",
+  "session_status",
+  "update_plan",
+]);
 
 function resolveLocalModelLeanAgentId(params: {
   config?: OpenClawConfig;
@@ -29,13 +42,24 @@ export function isLocalModelLeanEnabled(params: {
   agentId?: string;
   sessionKey?: string;
 }): boolean {
+  return resolveLocalModelLeanProfile(params) !== undefined;
+}
+
+export function resolveLocalModelLeanProfile(params: {
+  config?: OpenClawConfig;
+  agentId?: string;
+  sessionKey?: string;
+}): LocalModelLeanProfile | undefined {
   const normalizedAgentId = resolveLocalModelLeanAgentId(params);
   const resolvedExperimental =
     params.config && normalizedAgentId
       ? (resolveAgentConfig(params.config, normalizedAgentId)?.experimental ??
         params.config.agents?.defaults?.experimental)
       : params.config?.agents?.defaults?.experimental;
-  return resolvedExperimental?.localModelLean ?? false;
+  if (!resolvedExperimental?.localModelLean) {
+    return undefined;
+  }
+  return resolvedExperimental.localModelLeanProfile ?? DEFAULT_LOCAL_MODEL_LEAN_PROFILE;
 }
 
 export function filterLocalModelLeanTools(params: {
@@ -44,8 +68,13 @@ export function filterLocalModelLeanTools(params: {
   agentId?: string;
   sessionKey?: string;
 }): AnyAgentTool[] {
-  if (!isLocalModelLeanEnabled(params)) {
+  const profile = resolveLocalModelLeanProfile(params);
+  if (!profile) {
     return params.tools;
   }
-  return params.tools.filter((tool) => !LOCAL_MODEL_LEAN_DENY_TOOL_NAMES.has(tool.name));
+  if (profile === "strict") {
+    return params.tools.filter((tool) => LOCAL_MODEL_LEAN_STRICT_ALLOW_TOOL_NAMES.has(tool.name));
+  }
+  const denyToolNames = LOCAL_MODEL_LEAN_BASIC_DENY_TOOL_NAMES;
+  return params.tools.filter((tool) => !denyToolNames.has(tool.name));
 }

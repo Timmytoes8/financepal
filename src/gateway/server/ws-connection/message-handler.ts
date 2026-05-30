@@ -106,6 +106,11 @@ import {
 } from "../../net.js";
 import { reconcileNodePairingOnConnect } from "../../node-connect-reconcile.js";
 import {
+  nodePairingMatchesConnectDevice,
+  resolveConnectNodeId,
+  resolveConnectNodeIdCandidates,
+} from "../../node-identity.js";
+import {
   resolveNodePairingClientIpSource,
   shouldAutoApproveNodePairingFromTrustedCidrs,
 } from "../../node-pairing-auto-approve.js";
@@ -1573,11 +1578,30 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             });
           }
         }
+        const nodePairingId = resolveConnectNodeId(connectParams);
+        let reconciledNodeId: string | undefined;
+        let matchedPairedNode = false;
+        let rejectedStablePairedNode = false;
         if (role === "node") {
+          let pairedNode = null;
+          for (const candidateNodeId of resolveConnectNodeIdCandidates(connectParams)) {
+            const candidate = await getPairedNode(candidateNodeId);
+            if (
+              candidate &&
+              nodePairingMatchesConnectDevice({ connect: connectParams, pairedNode: candidate })
+            ) {
+              pairedNode = candidate;
+              break;
+            }
+            if (candidate && candidateNodeId === nodePairingId) {
+              rejectedStablePairedNode = true;
+            }
+          }
+          matchedPairedNode = pairedNode !== null;
           const reconciliation = await reconcileNodePairingOnConnect({
             cfg: getRuntimeConfig(),
             connectParams,
-            pairedNode: await getPairedNode(connectParams.device?.id ?? connectParams.client.id),
+            pairedNode,
             reportedClientIp,
             requestPairing: async (input) => await requestNodePairing(input),
           });
@@ -1605,6 +1629,7 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             declaredCommands?: string[];
             declaredPermissions?: Record<string, boolean>;
           };
+          reconciledNodeId = reconciliation.nodeId;
           nodeConnectParams.declaredCaps = reconciliation.declaredCaps;
           nodeConnectParams.declaredCommands = reconciliation.declaredCommands;
           nodeConnectParams.declaredPermissions = reconciliation.declaredPermissions;
@@ -1761,12 +1786,20 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         }
         if (role === "node") {
           const context = buildRequestContext();
+          const unmatchedNodeId = connectParams.device?.id ?? connId;
           const nodeSession = context.nodeRegistry.register(nextClient, {
             remoteIp: reportedClientIp,
+            nodeId:
+              matchedPairedNode || !rejectedStablePairedNode
+                ? (reconciledNodeId ?? nodePairingId)
+                : unmatchedNodeId,
           });
           const instanceIdRaw = connectParams.client.instanceId;
           const instanceId = typeof instanceIdRaw === "string" ? instanceIdRaw.trim() : "";
           const nodeIdsForPairing = new Set<string>([nodeSession.nodeId]);
+          if (nodePairingId) {
+            nodeIdsForPairing.add(nodePairingId);
+          }
           if (instanceId) {
             nodeIdsForPairing.add(instanceId);
           }

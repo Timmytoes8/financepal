@@ -349,6 +349,27 @@ describe("node pairing tokens", () => {
       });
       await expect(getPairedNode("node-1", baseDir)).resolves.toBeNull();
 
+      const execApprovalsRequest = await requestNodePairing(
+        {
+          nodeId: "node-exec-approvals",
+          platform: "windows",
+          deviceFamily: "Windows",
+          commands: ["system.execApprovals.get", "system.execApprovals.set"],
+        },
+        baseDir,
+      );
+
+      await expect(
+        approveNodePairing(
+          execApprovalsRequest.request.requestId,
+          { callerScopes: ["operator.pairing", "operator.write"] },
+          baseDir,
+        ),
+      ).resolves.toEqual({
+        status: "forbidden",
+        missingScope: "operator.admin",
+      });
+
       const commandlessRequest = await requestNodePairing(
         {
           nodeId: "node-2",

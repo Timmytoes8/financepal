@@ -71,7 +71,6 @@ type AttemptSpawnWorkspaceHoisted = {
   getOrCreateSessionMcpRuntimeMock: AsyncUnknownMock;
   materializeBundleMcpToolsForRunMock: AsyncUnknownMock;
   createBundleLspToolRuntimeMock: AsyncUnknownMock;
-  emitTrustedDiagnosticEventMock: UnknownMock;
   subscribeEmbeddedAgentSessionMock: Mock<SubscribeEmbeddedAgentSessionFn>;
   acquireSessionWriteLockMock: Mock<AcquireSessionWriteLockFn>;
   installToolResultContextGuardMock: UnknownMock;
@@ -147,7 +146,6 @@ const hoisted = vi.hoisted((): AttemptSpawnWorkspaceHoisted => {
   const getOrCreateSessionMcpRuntimeMock = vi.fn(async () => undefined);
   const materializeBundleMcpToolsForRunMock = vi.fn(async () => undefined);
   const createBundleLspToolRuntimeMock = vi.fn(async () => undefined);
-  const emitTrustedDiagnosticEventMock = vi.fn();
   const installToolResultContextGuardMock = vi.fn(() => () => {});
   const installContextEngineLoopHookMock = vi.fn(() => () => {});
   const flushPendingToolResultsAfterIdleMock = vi.fn(async () => {});
@@ -221,7 +219,6 @@ const hoisted = vi.hoisted((): AttemptSpawnWorkspaceHoisted => {
     getOrCreateSessionMcpRuntimeMock,
     materializeBundleMcpToolsForRunMock,
     createBundleLspToolRuntimeMock,
-    emitTrustedDiagnosticEventMock,
     subscribeEmbeddedAgentSessionMock,
     acquireSessionWriteLockMock,
     installToolResultContextGuardMock,
@@ -617,17 +614,6 @@ vi.mock("../../agent-bundle-lsp-runtime.js", () => ({
     hoisted.createBundleLspToolRuntimeMock(...args),
 }));
 
-vi.mock("../../../infra/diagnostic-events.js", async () => {
-  const actual = await vi.importActual<typeof import("../../../infra/diagnostic-events.js")>(
-    "../../../infra/diagnostic-events.js",
-  );
-  return {
-    ...actual,
-    emitTrustedDiagnosticEvent: (...args: unknown[]) =>
-      hoisted.emitTrustedDiagnosticEventMock(...args),
-  };
-});
-
 vi.mock("../../../image-generation/runtime.js", () => ({
   generateImage: vi.fn(),
   listRuntimeImageGenerationProviders: () => [],
@@ -968,7 +954,6 @@ export function resetEmbeddedAttemptHarness(
   hoisted.getOrCreateSessionMcpRuntimeMock.mockReset().mockResolvedValue(undefined);
   hoisted.materializeBundleMcpToolsForRunMock.mockReset().mockResolvedValue(undefined);
   hoisted.createBundleLspToolRuntimeMock.mockReset().mockResolvedValue(undefined);
-  hoisted.emitTrustedDiagnosticEventMock.mockReset();
   hoisted.createOpenClawCodingToolsMock.mockReset().mockImplementation((...args: unknown[]) => {
     const options = args[0] as
       | {

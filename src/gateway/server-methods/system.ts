@@ -53,6 +53,8 @@ export const systemHandlers: GatewayRequestHandlers = {
     respond(true, presence, undefined);
   },
   "system-event": ({ params, respond, context }) => {
+    // System events come from mixed RPC clients; normalize fields before
+    // presence state decides whether this event should fan out or be elided.
     const text = normalizeOptionalString(params.text) ?? "";
     if (!text) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "text required"));
@@ -121,6 +123,8 @@ export const systemHandlers: GatewayRequestHandlers = {
       if (hasChanges) {
         const contextChanged = isSystemEventContextChanged(sessionKey, presenceUpdate.key);
         const parts: string[] = [];
+        // Re-state node identity only when the line would otherwise lose
+        // routing context or the host/IP changed.
         if (contextChanged || hostChanged || ipChanged) {
           const hostLabel = normalizeOptionalString(next.host) ?? "Unknown";
           const ipLabel = normalizeOptionalString(next.ip);
@@ -146,6 +150,8 @@ export const systemHandlers: GatewayRequestHandlers = {
     } else {
       enqueueSystemEvent(text, { sessionKey });
     }
+    // Presence changes are observable even when noisy node heartbeat text is
+    // suppressed from the transcript-style system event queue.
     broadcastPresenceSnapshot({
       broadcast: context.broadcast,
       incrementPresenceVersion: context.incrementPresenceVersion,

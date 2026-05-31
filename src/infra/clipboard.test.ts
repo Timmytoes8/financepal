@@ -58,7 +58,8 @@ describe("copyToClipboard", () => {
         input: tokenUrl,
       },
     );
-    expect(runCommandWithTimeoutMock.mock.calls[0]?.[0]).not.toContain("secret-token");
+    const invokedArgv = runCommandWithTimeoutMock.mock.calls[0]?.[0] as string[];
+    expect(invokedArgv.join("\0")).not.toContain("secret-token");
     expect(runCommandWithTimeoutMock).toHaveBeenCalledTimes(1);
   });
 

@@ -1,10 +1,11 @@
+import { normalizeStringifiedOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { loadConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveSecretInputRef } from "../config/types.secrets.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { resolveGatewayConnectionAuth } from "../gateway/connection-auth.js";
 import { isLoopbackHost } from "../gateway/net.js";
-import { normalizeStringifiedOptionalString } from "../shared/string-coerce.js";
 
 export type DirectLoopbackGatewayAuthOpts = {
   url?: string;
@@ -18,10 +19,36 @@ type SharedGatewayCredentials = {
   password?: string;
 };
 
+function pickActiveGatewayCredential(
+  mode: "token" | "password",
+  credentials: SharedGatewayCredentials | undefined,
+): SharedGatewayCredentials | undefined {
+  if (!credentials) {
+    return undefined;
+  }
+  const credential =
+    mode === "token" ? { token: credentials.token } : { password: credentials.password };
+  return credential.token || credential.password ? credential : undefined;
+}
+
+function hasActiveGatewayAuthSecretRef(
+  config: OpenClawConfig | undefined,
+  mode: "token" | "password",
+): boolean {
+  if (!config) {
+    return false;
+  }
+  const value = mode === "token" ? config.gateway?.auth?.token : config.gateway?.auth?.password;
+  return Boolean(resolveSecretInputRef({ value, defaults: config.secrets?.defaults }).ref);
+}
+
 async function resolveConfiguredSharedGatewayCredentials(
   config: OpenClawConfig | undefined,
 ): Promise<SharedGatewayCredentials | undefined> {
   const resolvedConfig = config ?? loadConfigForDirectAuthProbe();
+  if (!resolvedConfig) {
+    return undefined;
+  }
   const auth = resolveGatewayAuth({
     authConfig: resolvedConfig?.gateway?.auth,
     tailscaleMode: resolvedConfig?.gateway?.tailscale?.mode,
@@ -30,15 +57,32 @@ async function resolveConfiguredSharedGatewayCredentials(
   if (auth.mode !== "token" && auth.mode !== "password") {
     return undefined;
   }
-  const literalCredentials = { token: auth.token, password: auth.password };
-  if (literalCredentials.token || literalCredentials.password || !resolvedConfig) {
+  if (hasActiveGatewayAuthSecretRef(resolvedConfig, auth.mode)) {
+    try {
+      const credentials = await resolveGatewayConnectionAuth({
+        config: resolvedConfig,
+        env: process.env,
+        localTokenPrecedence: "config-first",
+        localPasswordPrecedence: "config-first",
+      });
+      return pickActiveGatewayCredential(auth.mode, credentials);
+    } catch {
+      return undefined;
+    }
+  }
+  const literalCredentials = pickActiveGatewayCredential(auth.mode, {
+    token: auth.token,
+    password: auth.password,
+  });
+  if (literalCredentials?.token || literalCredentials?.password) {
     return literalCredentials;
   }
   try {
-    return await resolveGatewayConnectionAuth({
+    const credentials = await resolveGatewayConnectionAuth({
       config: resolvedConfig,
       env: process.env,
     });
+    return pickActiveGatewayCredential(auth.mode, credentials);
   } catch {
     return undefined;
   }

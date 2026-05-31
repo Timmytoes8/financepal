@@ -258,8 +258,8 @@ export const execApprovalsHandlers: GatewayRequestHandlers = {
       if (!respondUnavailableOnNodeInvokeError(respond, res)) {
         return;
       }
-      const payload = safeParseJson(res.payloadJSON ?? null);
-      respond(true, payload, undefined);
+      const payload = res.payloadJSON ? safeParseJson(res.payloadJSON) : res.payload;
+      respond(true, payload ?? {}, undefined);
     });
   },
 };

@@ -67,6 +67,58 @@ describe("shouldUseDirectLoopbackGatewayAuth", () => {
     });
   });
 
+  it("does not treat env fallback tokens as shared when a configured token ref differs", async () => {
+    await withEnvOverride(
+      {
+        CONFIG_GATEWAY_TOKEN: "resolved-shared-token",
+        OPENCLAW_GATEWAY_TOKEN: "stale-device-token",
+      },
+      async () => {
+        expect(
+          await shouldUseDirectLoopbackGatewayAuth({
+            url: "ws://127.0.0.1:18789",
+            token: "stale-device-token",
+            config: {
+              gateway: {
+                auth: {
+                  mode: "token",
+                  token: { source: "env", provider: "default", id: "CONFIG_GATEWAY_TOKEN" },
+                },
+              },
+              secrets: {
+                providers: {
+                  default: { source: "env" },
+                },
+              },
+            },
+          }),
+        ).toBe(false);
+      },
+    );
+  });
+
+  it("does not treat inactive token auth as shared in password mode", async () => {
+    await withEnvOverride(
+      {
+        OPENCLAW_GATEWAY_TOKEN: "stale-device-token",
+        OPENCLAW_GATEWAY_PASSWORD: "shared-password",
+      },
+      async () => {
+        expect(
+          await shouldUseDirectLoopbackGatewayAuth({
+            url: "ws://127.0.0.1:18789",
+            token: "stale-device-token",
+            config: {
+              gateway: {
+                auth: { mode: "password", password: "shared-password" },
+              },
+            },
+          }),
+        ).toBe(false);
+      },
+    );
+  });
+
   it("recognizes implicit env gateway tokens as shared loopback auth", async () => {
     await withTempHomeConfig(
       {

@@ -307,6 +307,7 @@ describe("callGateway url resolution", () => {
     "OPENCLAW_GATEWAY_URL",
     "OPENCLAW_GATEWAY_TOKEN",
     "OPENCLAW_STATE_DIR",
+    "LOCAL_REF_TOKEN",
   ]);
 
   beforeEach(() => {
@@ -487,6 +488,7 @@ describe("callGateway url resolution", () => {
   it("keeps direct-local backend SecretRef token auth independent of paired device state", async () => {
     setLocalLoopbackGatewayConfig();
     process.env.LOCAL_REF_TOKEN = "explicit-token";
+    process.env.OPENCLAW_GATEWAY_TOKEN = "stale-device-token";
     getRuntimeConfig.mockReturnValue({
       gateway: {
         mode: "local",

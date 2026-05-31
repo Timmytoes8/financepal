@@ -15,6 +15,7 @@ import {
   resolveSessionStoreEntry,
   resolveStorePath,
 } from "openclaw/plugin-sdk/session-store-runtime";
+import { resolveCodexAppServerForModelProvider } from "./app-server/app-server-policy.js";
 import { resolveCodexAppServerAuthProfileIdForAgent } from "./app-server/auth-bridge.js";
 import { CODEX_CONTROL_METHODS } from "./app-server/capabilities.js";
 import {
@@ -344,13 +345,18 @@ async function resolveThreadBindingRuntime(
     modelProvider: params.modelProvider,
     ...agentLookup,
   });
+  const modelScopedRuntime = resolveCodexAppServerForModelProvider({
+    appServer: runtime,
+    provider: modelProvider,
+    model: params.model,
+  });
   const client = await getLeasedSharedCodexAppServerClient({
     startOptions: runtime.start,
     timeoutMs: runtime.requestTimeoutMs,
     authProfileId: params.authProfileId,
     ...agentLookup,
   });
-  return { execPolicy, runtime, agentLookup, modelProvider, client };
+  return { execPolicy, runtime: modelScopedRuntime, agentLookup, modelProvider, client };
 }
 
 function buildThreadRequestRuntimeOptions(
@@ -481,7 +487,12 @@ async function runBoundTurn(params: {
     sessionKey: params.sessionKey,
     workspaceDir,
   });
-  assertNativeConversationApprovalPolicySupported({ execPolicy, runtime });
+  const modelScopedRuntime = resolveCodexAppServerForModelProvider({
+    appServer: runtime,
+    provider: binding.modelProvider,
+    model: binding.model,
+  });
+  assertNativeConversationApprovalPolicySupported({ execPolicy, runtime: modelScopedRuntime });
 
   const client = await getLeasedSharedCodexAppServerClient({
     startOptions: runtime.start,
@@ -540,11 +551,13 @@ async function runBoundTurn(params: {
         }),
         cwd: workspaceDir,
         approvalPolicy: execPolicy?.touched
-          ? runtime.approvalPolicy
-          : (binding.approvalPolicy ?? runtime.approvalPolicy),
-        approvalsReviewer: runtime.approvalsReviewer,
+          ? modelScopedRuntime.approvalPolicy
+          : (binding.approvalPolicy ?? modelScopedRuntime.approvalPolicy),
+        approvalsReviewer: modelScopedRuntime.approvalsReviewer,
         sandboxPolicy: codexSandboxPolicyForTurn(
-          execPolicy?.touched ? runtime.sandbox : (binding.sandbox ?? runtime.sandbox),
+          execPolicy?.touched
+            ? modelScopedRuntime.sandbox
+            : (binding.sandbox ?? modelScopedRuntime.sandbox),
           workspaceDir,
         ),
         ...(binding.model ? { model: binding.model } : {}),

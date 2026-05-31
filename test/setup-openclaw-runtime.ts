@@ -26,7 +26,7 @@ type WorkerPluginRuntimeHelpers = {
 };
 type WorkerCleanupHelpers = {
   resetContextWindowCacheForTest: typeof import("../src/agents/context-runtime-state.js").resetContextWindowCacheForTest;
-  resetModelCatalogReadyCacheForTest: typeof import("../src/agents/models-config-state.js").resetModelCatalogReadyCacheForTest;
+  resetModelsJsonReadyCacheForTest: typeof import("../src/agents/models-config-state.js").resetModelsJsonReadyCacheForTest;
 };
 
 type ReplyToModeResolver = NonNullable<
@@ -72,7 +72,7 @@ function loadWorkerCleanupHelpers(): Promise<WorkerCleanupHelpers> {
     ),
   ]).then(([contextRuntimeState, modelsConfigState]) => ({
     resetContextWindowCacheForTest: contextRuntimeState.resetContextWindowCacheForTest,
-    resetModelCatalogReadyCacheForTest: modelsConfigState.resetModelCatalogReadyCacheForTest,
+    resetModelsJsonReadyCacheForTest: modelsConfigState.resetModelsJsonReadyCacheForTest,
   }));
   return globalState[WORKER_CLEANUP_HELPERS];
 }
@@ -361,11 +361,11 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  const { resetContextWindowCacheForTest, resetModelCatalogReadyCacheForTest } =
+  const { resetContextWindowCacheForTest, resetModelsJsonReadyCacheForTest } =
     await loadWorkerCleanupHelpers();
   closeOpenClawAgentDatabasesForTest();
   resetContextWindowCacheForTest();
-  resetModelCatalogReadyCacheForTest();
+  resetModelsJsonReadyCacheForTest();
   await installDefaultPluginRegistry();
 });
 

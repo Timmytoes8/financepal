@@ -84,6 +84,24 @@ describe("detectPackageManager", () => {
     });
   });
 
+  it("preserves pnpm sibling virtual-store package roots that also carry shrinkwrap", async () => {
+    await withTempDir({ prefix: "openclaw-detect-pm-pnpm-sibling-store-" }, async (base) => {
+      const root = path.join(base, "5", ".pnpm", "openclaw@1.0.0", "node_modules", "openclaw");
+      await fs.mkdir(root, { recursive: true });
+      await fs.writeFile(
+        path.join(root, "package.json"),
+        JSON.stringify({ packageManager: "pnpm@10.8.1" }),
+        "utf8",
+      );
+      await fs.writeFile(path.join(root, "npm-shrinkwrap.json"), "", "utf8");
+      await fs.mkdir(path.join(base, "5", "node_modules"), { recursive: true });
+      await fs.writeFile(path.join(base, "5", "node_modules", ".modules.yaml"), "", "utf8");
+      await fs.writeFile(path.join(base, "5", "pnpm-lock.yaml"), "", "utf8");
+
+      await expect(detectPackageManager(root)).resolves.toBe("pnpm");
+    });
+  });
+
   it("preserves project-local pnpm package roots that also carry shrinkwrap", async () => {
     await withTempDir({ prefix: "openclaw-detect-pm-local-pnpm-" }, async (base) => {
       const root = path.join(base, "node_modules", "openclaw");

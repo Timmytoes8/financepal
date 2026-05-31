@@ -19,8 +19,10 @@ function inferPnpmOwningNodeModulesFromPackageRoot(pkgRoot: string): string | nu
   const parts = normalized.split(path.sep);
   const pnpmIndex = parts.lastIndexOf(".pnpm");
   if (pnpmIndex > 0 && parts[pnpmIndex + 2] === "node_modules") {
-    const owningNodeModules = parts.slice(0, pnpmIndex).join(path.sep) || path.sep;
-    return path.basename(owningNodeModules) === "node_modules" ? owningNodeModules : null;
+    const layoutDir = parts.slice(0, pnpmIndex).join(path.sep) || path.sep;
+    return path.basename(layoutDir) === "node_modules"
+      ? layoutDir
+      : path.join(layoutDir, "node_modules");
   }
 
   const directNodeModules = path.dirname(normalized);

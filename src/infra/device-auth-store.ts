@@ -7,7 +7,11 @@ import {
   loadDeviceAuthTokenFromStore,
   storeDeviceAuthTokenInStore,
 } from "../shared/device-auth-store.js";
-import type { DeviceAuthStore } from "../shared/device-auth.js";
+import {
+  type DeviceAuthStore,
+  normalizeDeviceAuthRole,
+  normalizeDeviceAuthScopes,
+} from "../shared/device-auth.js";
 import { privateFileStoreSync } from "./private-file-store.js";
 
 const DEVICE_AUTH_FILE = "device-auth.json";
@@ -17,6 +21,35 @@ const storeReadCache = new Map<string, StoreCacheEntry>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseDeviceAuthEntry(rawRole: string, value: unknown): DeviceAuthEntry | null {
+  const role = normalizeDeviceAuthRole(rawRole);
+  if (!role || !isRecord(value) || typeof value.token !== "string") {
+    return null;
+  }
+  const updatedAtMs =
+    typeof value.updatedAtMs === "number" && Number.isFinite(value.updatedAtMs)
+      ? value.updatedAtMs
+      : 0;
+  return {
+    token: value.token,
+    role,
+    scopes: normalizeDeviceAuthScopes(Array.isArray(value.scopes) ? value.scopes : undefined),
+    updatedAtMs,
+  };
+}
+
+function parseDeviceAuthTokens(tokens: Record<string, unknown>): Record<string, DeviceAuthEntry> {
+  const parsed: Record<string, DeviceAuthEntry> = {};
+  for (const [rawRole, value] of Object.entries(tokens)) {
+    const entry = parseDeviceAuthEntry(rawRole, value);
+    if (entry) {
+      const role = entry.role;
+      parsed[role] = entry;
+    }
+  }
+  return parsed;
 }
 
 function parseDeviceAuthStore(value: unknown): DeviceAuthStore | null {
@@ -29,7 +62,7 @@ function parseDeviceAuthStore(value: unknown): DeviceAuthStore | null {
   return {
     version: 1,
     deviceId: value.deviceId,
-    tokens: value.tokens,
+    tokens: parseDeviceAuthTokens(value.tokens),
   };
 }
 

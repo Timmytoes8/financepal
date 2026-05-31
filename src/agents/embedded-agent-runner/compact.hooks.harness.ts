@@ -18,6 +18,7 @@ type MockMemorySearchManager = {
 type MockEmbeddedAgentStreamFn = Mock<
   (model?: unknown, context?: unknown, options?: unknown) => unknown
 >;
+type AsyncUnknownMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 
 export const contextEngineCompactMock = vi.fn(async () => ({
   ok: true as boolean,
@@ -174,6 +175,15 @@ export const rotateTranscriptAfterCompactionMock: Mock<
   rotated: false,
 }));
 export const enqueueCommandInLaneMock = vi.fn((_lane: unknown, task: () => unknown) => task());
+export const createBundleMcpToolRuntimeMock: AsyncUnknownMock = vi.fn(async () => ({
+  tools: [],
+  dispose: vi.fn(async () => {}),
+}));
+export const createBundleLspToolRuntimeMock: AsyncUnknownMock = vi.fn(async () => ({
+  tools: [],
+  sessions: [],
+  dispose: vi.fn(async () => {}),
+}));
 
 export function createCompactHooksRuntimePlan(
   params: BuildAgentRuntimePlanParams,
@@ -338,6 +348,17 @@ export function resetCompactSessionStateMocks(): void {
   rotateTranscriptAfterCompactionMock.mockResolvedValue({ rotated: false });
   enqueueCommandInLaneMock.mockReset();
   enqueueCommandInLaneMock.mockImplementation((_lane: unknown, task: () => unknown) => task());
+  createBundleMcpToolRuntimeMock.mockReset();
+  createBundleMcpToolRuntimeMock.mockResolvedValue({
+    tools: [],
+    dispose: vi.fn(async () => {}),
+  });
+  createBundleLspToolRuntimeMock.mockReset();
+  createBundleLspToolRuntimeMock.mockResolvedValue({
+    tools: [],
+    sessions: [],
+    dispose: vi.fn(async () => {}),
+  });
   listRegisteredPluginAgentPromptGuidanceMock.mockReset();
   listRegisteredPluginAgentPromptGuidanceMock.mockImplementation((params?: { surface?: string }) =>
     params?.surface === "subagent"
@@ -596,20 +617,13 @@ export async function loadCompactHooksHarness(): Promise<{
     resolveBootstrapContextForRun: vi.fn(async () => ({ contextFiles: [] })),
   }));
 
-  vi.doMock("../bundle-mcp-tools.js", () => ({
+  vi.doMock("../agent-bundle-mcp-tools.js", () => ({
     retireSessionMcpRuntime: vi.fn(async () => true),
-    createBundleMcpToolRuntime: vi.fn(async () => ({
-      tools: [],
-      dispose: vi.fn(async () => {}),
-    })),
+    createBundleMcpToolRuntime: (...args: unknown[]) => createBundleMcpToolRuntimeMock(...args),
   }));
 
-  vi.doMock("../bundle-lsp-runtime.js", () => ({
-    createBundleLspToolRuntime: vi.fn(async () => ({
-      tools: [],
-      sessions: [],
-      dispose: vi.fn(async () => {}),
-    })),
+  vi.doMock("../agent-bundle-lsp-runtime.js", () => ({
+    createBundleLspToolRuntime: (...args: unknown[]) => createBundleLspToolRuntimeMock(...args),
   }));
 
   vi.doMock("../docs-path.js", () => ({

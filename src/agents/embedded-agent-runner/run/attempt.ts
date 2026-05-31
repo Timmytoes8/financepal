@@ -1397,6 +1397,7 @@ export async function runEmbeddedAttempt(
             sessionId: params.sessionId,
           })
         : [];
+    const activeToolReservedNames = toolsRaw.map((tool) => tool.name);
     const tools = normalizeAgentRuntimeTools({
       runtimePlan: params.runtimePlan,
       tools: providerNormalizableToolsRaw,
@@ -1427,7 +1428,7 @@ export async function runEmbeddedAttempt(
       ? await materializeBundleMcpToolsForRun({
           runtime: bundleMcpSessionRuntime,
           reservedToolNames: [
-            ...tools.map((tool) => tool.name),
+            ...activeToolReservedNames,
             ...(clientTools?.map((tool) => tool.function.name) ?? []),
           ],
         })
@@ -1443,7 +1444,7 @@ export async function runEmbeddedAttempt(
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
           reservedToolNames: [
-            ...tools.map((tool) => tool.name),
+            ...activeToolReservedNames,
             ...(clientTools?.map((tool) => tool.function.name) ?? []),
             ...bundleMcpTools.map((tool) => tool.name),
           ],

@@ -59,6 +59,14 @@ function addEmptyObjectArgumentPreparation(tool: AnyAgentTool, parameters: unkno
   };
 }
 
+function isJsonSerializableSchema(schema: unknown): boolean {
+  try {
+    return JSON.stringify(schema) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeToolParameters(
   tool: AnyAgentTool,
   options?: ToolParameterSchemaOptions,
@@ -73,6 +81,9 @@ export function normalizeToolParameters(
       ? (tool.parameters as Record<string, unknown>)
       : undefined;
   if (!schema) {
+    return tool;
+  }
+  if (!isJsonSerializableSchema(schema)) {
     return tool;
   }
   const parameters = normalizeToolParameterSchema(schema, options);

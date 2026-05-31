@@ -5,6 +5,8 @@ import {
   applyAgentCompactionSettingsFromConfigMock,
   buildEmbeddedSystemPromptMock,
   contextEngineCompactMock,
+  createBundleLspToolRuntimeMock,
+  createBundleMcpToolRuntimeMock,
   createCompactHooksRuntimePlan,
   createAgentSessionMock,
   createPreparedEmbeddedAgentSettingsManagerMock,
@@ -474,9 +476,9 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
         execute: async () => ({ text: "ok" }),
       },
       {
-        name: "dofbot_move_angles",
-        label: "Dofbot Move Angles",
-        description: "Move robot joints.",
+        name: "fuzzplugin_move_delta",
+        label: "Fuzz Move Delta",
+        description: "Move synthetic joints.",
         parameters: { type: "array", items: { type: "number" } },
         execute: async () => ({ text: "bad" }),
       },
@@ -495,6 +497,54 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
       (sessionOptions.customTools as Array<{ name: string }>).map((tool) => tool.name),
     ).toEqual(["healthy_lookup"]);
     expect(sessionOptions.tools).toEqual(["healthy_lookup"]);
+  });
+
+  it("keeps quarantined active tool names reserved for bundled compaction tools", async () => {
+    resolveContextEngineMock.mockResolvedValueOnce({
+      info: { ownsCompaction: false },
+      compact: contextEngineCompactMock,
+    });
+    const circularSchema: Record<string, unknown> = {
+      type: "object",
+      properties: {},
+    };
+    circularSchema.self = circularSchema;
+    createOpenClawCodingToolsMock.mockReturnValueOnce([
+      {
+        name: "mockplugin_lookup",
+        label: "Mock Lookup",
+        description: "Look up safe data.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => ({ text: "ok" }),
+      },
+      {
+        name: "fuzzplugin_circular_schema",
+        label: "Fuzz Circular Schema",
+        description: "Tool with provider-hostile schema metadata.",
+        parameters: circularSchema,
+        execute: async () => ({ text: "bad" }),
+      },
+    ] as never);
+
+    await compactEmbeddedAgentSessionDirect({
+      sessionId: "session-1",
+      sessionKey: "agent:main:session-1",
+      sessionFile: "/tmp/session.jsonl",
+      workspaceDir: "/tmp/workspace",
+      runId: "run-fuzzplugin-compaction-reservation",
+    });
+
+    expectRecordFields(mockCallArg(createBundleMcpToolRuntimeMock), {
+      reservedToolNames: ["mockplugin_lookup", "fuzzplugin_circular_schema"],
+    });
+    expectRecordFields(mockCallArg(createBundleLspToolRuntimeMock), {
+      reservedToolNames: ["mockplugin_lookup", "fuzzplugin_circular_schema"],
+    });
+    const sessionOptions = expectRecordFields(mockCallArg(createAgentSessionMock), {});
+    expect(
+      (sessionOptions.customTools as Array<{ name: string }>).map((tool) => tool.name),
+    ).toEqual(["mockplugin_lookup"]);
+    expect(sessionOptions.tools).toEqual(["mockplugin_lookup"]);
   });
 
   it("quarantines unserializable schemas before compaction provider normalization", async () => {

@@ -838,6 +838,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
             sessionId: params.sessionId,
           })
         : [];
+    const activeToolReservedNames = toolsRaw.map((tool) => tool.name);
     const tools = runtimePlan.tools.normalize(
       providerNormalizableToolsRaw,
       runtimePlanModelContext,
@@ -846,7 +847,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
       ? await createBundleMcpToolRuntime({
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
-          reservedToolNames: tools.map((tool) => tool.name),
+          reservedToolNames: activeToolReservedNames,
         })
       : undefined;
     const bundleLspRuntime = toolsEnabled
@@ -854,7 +855,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
           reservedToolNames: [
-            ...tools.map((tool) => tool.name),
+            ...activeToolReservedNames,
             ...(bundleMcpRuntime?.tools.map((tool) => tool.name) ?? []),
           ],
         })

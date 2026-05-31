@@ -397,6 +397,68 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
     expect(activeToolNames).toEqual([["healthy_lookup"]]);
   });
 
+  it("keeps quarantined active tool names reserved for bundled runtimes", async () => {
+    const circularSchema = {
+      type: "object",
+    } as { self?: unknown; type: string };
+    circularSchema.self = circularSchema;
+    hoisted.createOpenClawCodingToolsMock.mockReturnValue([
+      {
+        name: "mockplugin_lookup",
+        label: "Mock Lookup",
+        description: "Look up safe data.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => ({ text: "ok" }),
+      },
+      {
+        name: "fuzzplugin_move_delta",
+        label: "Fuzz Move Delta",
+        description: "Tool with provider-hostile schema metadata.",
+        parameters: circularSchema,
+        execute: async () => ({ text: "bad" }),
+      },
+    ]);
+    hoisted.getOrCreateSessionMcpRuntimeMock.mockResolvedValue({});
+    hoisted.materializeBundleMcpToolsForRunMock.mockResolvedValue({
+      tools: [],
+      dispose: async () => {},
+    });
+    hoisted.createBundleLspToolRuntimeMock.mockResolvedValue({
+      tools: [],
+      sessions: [],
+      dispose: async () => {},
+    });
+
+    await createContextEngineAttemptRunner({
+      contextEngine: createContextEngineBootstrapAndAssemble(),
+      sessionKey,
+      tempPaths,
+      attemptOverrides: {
+        disableTools: false,
+        config: {
+          tools: {
+            codeMode: { enabled: false },
+            toolSearch: false,
+          },
+        } as OpenClawConfig,
+      },
+    });
+
+    expectFields(mockParams(hoisted.materializeBundleMcpToolsForRunMock, 0, "bundle MCP"), {
+      reservedToolNames: ["mockplugin_lookup", "fuzzplugin_move_delta"],
+    });
+    expectFields(mockParams(hoisted.createBundleLspToolRuntimeMock, 0, "bundle LSP"), {
+      reservedToolNames: ["mockplugin_lookup", "fuzzplugin_move_delta"],
+    });
+    const sessionOptions = mockParams(
+      hoisted.createAgentSessionMock,
+      0,
+      "createAgentSession options",
+    );
+    const customTools = requireRecords(sessionOptions.customTools, "customTools");
+    expect(customTools.map((tool) => tool.name)).toEqual(["mockplugin_lookup"]);
+  });
+
   it("does not report quarantines for bundled tools removed by allowlist policy", async () => {
     hoisted.createOpenClawCodingToolsMock.mockReturnValue([]);
     hoisted.getOrCreateSessionMcpRuntimeMock.mockResolvedValue({});

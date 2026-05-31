@@ -650,6 +650,22 @@ function makeTool(parameters: TSchema): AnyAgentTool {
 }
 
 describe("normalizeToolParameters", () => {
+  it("leaves non-serializable schemas for runtime quarantine", () => {
+    const parameters = { type: "object" } as { self?: unknown; type: string };
+    parameters.self = parameters;
+    const tool: AnyAgentTool = {
+      name: "fuzzplugin_circular_schema",
+      label: "Fuzz Circular Schema",
+      description: "Tool with provider-hostile schema metadata.",
+      parameters,
+      execute: vi.fn(),
+    };
+
+    const normalized = normalizeToolParameters(tool);
+
+    expect(normalized).toBe(tool);
+  });
+
   it("normalizes truly empty schemas to type:object with properties:{} (MCP parameter-free tools)", () => {
     const tool: AnyAgentTool = {
       name: "get_flux_instance",

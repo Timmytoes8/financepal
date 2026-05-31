@@ -143,8 +143,9 @@ function samePendingApprovalSurface(
   const incomingCommands =
     normalizeArrayBackedTrimmedStringList(incoming.commands) ?? existing.commands;
   const incomingPermissions = incoming.permissions ?? existing.permissions;
+  const incomingDeviceId = incoming.deviceId ?? existing.deviceId;
   return (
-    existing.deviceId === incoming.deviceId &&
+    existing.deviceId === incomingDeviceId &&
     sameNodeApprovalSurfaceSet(existing.caps, incomingCaps) &&
     sameNodeApprovalSurfaceSet(existing.commands, incomingCommands) &&
     sameNodePermissionSurface(existing.permissions, incomingPermissions)
@@ -158,7 +159,7 @@ function mergeNodePairingReplacementInput(params: {
   const latest = params.existing[0];
   return {
     nodeId: params.incoming.nodeId,
-    deviceId: params.incoming.deviceId,
+    deviceId: params.incoming.deviceId ?? latest?.deviceId,
     clientId: params.incoming.clientId ?? latest?.clientId,
     clientMode: params.incoming.clientMode ?? latest?.clientMode,
     displayName: params.incoming.displayName ?? latest?.displayName,

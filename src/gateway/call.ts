@@ -603,18 +603,8 @@ async function resolveGatewayCallContext(
     urlOverride,
     explicitAuth,
   });
-  const shouldProbeExplicitBackendToken =
-    !opts.config &&
-    Boolean(explicitAuth.token) &&
-    (opts.mode ?? GATEWAY_CLIENT_MODES.BACKEND) === GATEWAY_CLIENT_MODES.BACKEND &&
-    (opts.clientName ?? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT) ===
-      GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT &&
-    Boolean(urlOverride && isLoopbackGatewayUrl(urlOverride));
   const config =
-    opts.config ??
-    (canSkipConfigLoad && !shouldProbeExplicitBackendToken
-      ? ({} as OpenClawConfig)
-      : await loadGatewayConfig());
+    opts.config ?? (canSkipConfigLoad ? ({} as OpenClawConfig) : await loadGatewayConfig());
   const configPath = opts.configPath ?? resolveGatewayConfigPath(process.env);
   const isRemoteMode = config.gateway?.mode === "remote";
   const remote = isRemoteMode ? config.gateway?.remote : undefined;
@@ -701,16 +691,16 @@ async function resolveConfiguredGatewayCredentialsForExplicitToken(
   if (!isBackendGatewayClient) {
     return undefined;
   }
-  const configForProbe = (() => {
-    if (context.config.gateway) {
-      return context.config;
-    }
+  let configForProbe: OpenClawConfig | undefined;
+  if (context.config.gateway) {
+    configForProbe = context.config;
+  } else {
     try {
-      return loadGatewayConfig();
+      configForProbe = await loadGatewayConfig();
     } catch {
-      return undefined;
+      configForProbe = undefined;
     }
-  })();
+  }
   if (!configForProbe) {
     return undefined;
   }

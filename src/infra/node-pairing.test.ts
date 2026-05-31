@@ -1,4 +1,3 @@
-// oxlint-disable typescript/no-unsafe-type-assertion -- Tests inspect node-pairing fixtures whose runtime shapes are part of the assertions.
 import fs from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createSuiteTempRootTracker } from "../test-helpers/temp-dir.js";
@@ -186,7 +185,7 @@ describe("node pairing tokens", () => {
     });
   });
 
-  test("does not inherit a stale device id into replacement pending requests", async () => {
+  test("preserves the verified device id in replacement pending requests", async () => {
     await withNodePairingDir(async (baseDir) => {
       await requestNodePairing(
         {
@@ -208,7 +207,7 @@ describe("node pairing tokens", () => {
 
       const list = await listNodePairing(baseDir);
       expect(list.pending).toHaveLength(1);
-      expect(list.pending[0]?.deviceId).toBeUndefined();
+      expect(list.pending[0]?.deviceId).toBe("device-1");
     });
   });
 

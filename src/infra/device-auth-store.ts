@@ -7,7 +7,11 @@ import {
   loadDeviceAuthTokenFromStore,
   storeDeviceAuthTokenInStore,
 } from "../shared/device-auth-store.js";
-import type { DeviceAuthStore } from "../shared/device-auth.js";
+import {
+  type DeviceAuthStore,
+  normalizeDeviceAuthRole,
+  normalizeDeviceAuthScopes,
+} from "../shared/device-auth.js";
 import { privateFileStoreSync } from "./private-file-store.js";
 
 const DEVICE_AUTH_FILE = "device-auth.json";
@@ -19,23 +23,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseDeviceAuthEntry(role: string, value: unknown): DeviceAuthEntry | null {
-  if (
-    !isRecord(value) ||
-    typeof value.token !== "string" ||
-    !Array.isArray(value.scopes) ||
-    !value.scopes.every((scope) => typeof scope === "string") ||
-    typeof value.updatedAtMs !== "number" ||
-    !Number.isFinite(value.updatedAtMs)
-  ) {
+function parseDeviceAuthEntry(rawRole: string, value: unknown): DeviceAuthEntry | null {
+  const role = normalizeDeviceAuthRole(rawRole);
+  if (!role || !isRecord(value) || typeof value.token !== "string") {
     return null;
   }
+  const updatedAtMs =
+    typeof value.updatedAtMs === "number" && Number.isFinite(value.updatedAtMs)
+      ? value.updatedAtMs
+      : 0;
   return {
     token: value.token,
     role,
-    scopes: value.scopes,
-    updatedAtMs: value.updatedAtMs,
+    scopes: normalizeDeviceAuthScopes(Array.isArray(value.scopes) ? value.scopes : undefined),
+    updatedAtMs,
   };
+}
+
+function parseDeviceAuthTokens(tokens: Record<string, unknown>): Record<string, DeviceAuthEntry> {
+  const out: Record<string, DeviceAuthEntry> = {};
+  for (const [role, value] of Object.entries(tokens)) {
+    const entry = parseDeviceAuthEntry(role, value);
+    if (entry) {
+      out[entry.role] = entry;
+    }
+  }
+  return out;
 }
 
 function parseDeviceAuthStore(value: unknown): DeviceAuthStore | null {
@@ -45,17 +58,10 @@ function parseDeviceAuthStore(value: unknown): DeviceAuthStore | null {
   if (!isRecord(value.tokens)) {
     return null;
   }
-  const tokens: Record<string, DeviceAuthEntry> = {};
-  for (const [role, rawEntry] of Object.entries(value.tokens)) {
-    const entry = parseDeviceAuthEntry(role, rawEntry);
-    if (entry) {
-      tokens[role] = entry;
-    }
-  }
   return {
     version: 1,
     deviceId: value.deviceId,
-    tokens,
+    tokens: parseDeviceAuthTokens(value.tokens),
   };
 }
 

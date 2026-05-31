@@ -77,6 +77,38 @@ describe("infra/device-auth-store", () => {
     });
   });
 
+  it("normalizes persisted token entries before returning them", async () => {
+    await withTempDir("openclaw-device-auth-", async (stateDir) => {
+      const env = createEnv(stateDir);
+      await fs.mkdir(path.dirname(deviceAuthFile(stateDir)), { recursive: true });
+      await fs.writeFile(
+        deviceAuthFile(stateDir),
+        JSON.stringify({
+          version: 1,
+          deviceId: "device-1",
+          tokens: {
+            " operator ": {
+              token: "secret",
+              role: "ignored",
+              scopes: ["operator.write", "operator.read", 123],
+              updatedAtMs: 1234,
+            },
+            broken: { scopes: [] },
+          },
+        }),
+        "utf8",
+      );
+
+      expect(loadDeviceAuthToken({ deviceId: "device-1", role: "operator", env })).toEqual({
+        token: "secret",
+        role: "operator",
+        scopes: ["operator.read", "operator.write"],
+        updatedAtMs: 1234,
+      });
+      expect(loadDeviceAuthToken({ deviceId: "device-1", role: "broken", env })).toBeNull();
+    });
+  });
+
   it("clears only the requested role and leaves unrelated tokens intact", async () => {
     await withTempDir("openclaw-device-auth-", async (stateDir) => {
       const env = createEnv(stateDir);

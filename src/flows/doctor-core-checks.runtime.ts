@@ -150,6 +150,36 @@ function collectBundleMcpRuntimeToolSchemaFindings(params: {
   });
 }
 
+function agentRuntimeToolLoadFailureFinding(params: {
+  agentId: string;
+  error: unknown;
+}): HealthFinding {
+  return {
+    checkId: "core/doctor/runtime-tool-schemas",
+    severity: "error",
+    message: `Agent ${params.agentId} runtime tool schema validation could not load the runtime tool set.`,
+    path: `agents.${params.agentId}.tools`,
+    requirement: formatErrorMessage(params.error),
+    fixHint:
+      "Fix provider/plugin tool loading errors, then rerun doctor before relying on assistant tool startup.",
+  };
+}
+
+function agentRuntimeToolNormalizationFailureFinding(params: {
+  agentId: string;
+  error: unknown;
+}): HealthFinding {
+  return {
+    checkId: "core/doctor/runtime-tool-schemas",
+    severity: "error",
+    message: `Agent ${params.agentId} runtime tool schema validation could not normalize the runtime tool set.`,
+    path: `agents.${params.agentId}.tools`,
+    requirement: formatErrorMessage(params.error),
+    fixHint:
+      "Fix provider/plugin schema normalization errors, then rerun doctor before relying on assistant tool startup.",
+  };
+}
+
 function bundleMcpRuntimeLoadFailureFinding(error: unknown): HealthFinding {
   return {
     checkId: "core/doctor/runtime-tool-schemas",
@@ -160,6 +190,65 @@ function bundleMcpRuntimeLoadFailureFinding(error: unknown): HealthFinding {
     fixHint:
       "Fix or disable the offending MCP server, then rerun doctor before relying on assistant tool startup.",
   };
+}
+
+function bundleMcpRuntimeNormalizationFailureFinding(error: unknown): HealthFinding {
+  return {
+    checkId: "core/doctor/runtime-tool-schemas",
+    severity: "error",
+    message: "Configured MCP tool schema validation could not normalize the runtime tool set.",
+    path: "mcp.servers",
+    requirement: formatErrorMessage(error),
+    fixHint:
+      "Fix provider/plugin schema normalization errors, then rerun doctor before relying on assistant tool startup.",
+  };
+}
+
+function collectAgentRuntimeToolSchemaFindings(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  workspaceDir: string;
+  modelRef: { provider: string; model: string };
+  model: ProviderRuntimeModel;
+}): readonly HealthFinding[] {
+  let tools: AnyAgentTool[];
+  try {
+    tools = createOpenClawCodingTools({
+      agentId: params.agentId,
+      workspaceDir: params.workspaceDir,
+      config: params.cfg,
+      modelProvider: params.modelRef.provider,
+      modelId: params.modelRef.model,
+      modelApi: params.model.api,
+      modelCompat: params.model.compat,
+      modelContextWindowTokens: params.model.contextWindow,
+      allowGatewaySubagentBinding: true,
+      emitBeforeToolCallDiagnostics: false,
+    });
+  } catch (error) {
+    return [agentRuntimeToolLoadFailureFinding({ agentId: params.agentId, error })];
+  }
+
+  let normalizedTools: AnyAgentTool[];
+  try {
+    normalizedTools = normalizeAgentRuntimeTools({
+      tools,
+      provider: params.modelRef.provider,
+      config: params.cfg,
+      workspaceDir: params.workspaceDir,
+      env: process.env,
+      modelId: params.modelRef.model,
+      modelApi: params.model.api,
+      model: params.model,
+    });
+  } catch (error) {
+    return [agentRuntimeToolNormalizationFailureFinding({ agentId: params.agentId, error })];
+  }
+
+  return collectToolSchemaFindings({
+    agentId: params.agentId,
+    tools: normalizedTools,
+  });
 }
 
 function bundleMcpRuntimeDiagnosticFinding(diagnostic: McpToolCatalogDiagnostic): HealthFinding {
@@ -318,32 +407,13 @@ export async function collectRuntimeToolSchemaFindings(
       if (!supportsModelTools(model)) {
         continue;
       }
-      const tools = createOpenClawCodingTools({
-        agentId,
-        workspaceDir,
-        config: cfg,
-        modelProvider: modelRef.provider,
-        modelId: modelRef.model,
-        modelApi: model.api,
-        modelCompat: model.compat,
-        modelContextWindowTokens: model.contextWindow,
-        allowGatewaySubagentBinding: true,
-        emitBeforeToolCallDiagnostics: false,
-      });
-      const normalizedTools = normalizeAgentRuntimeTools({
-        tools,
-        provider: modelRef.provider,
-        config: cfg,
-        workspaceDir,
-        env: process.env,
-        modelId: modelRef.model,
-        modelApi: model.api,
-        model,
-      });
       findings.push(
-        ...collectToolSchemaFindings({
+        ...collectAgentRuntimeToolSchemaFindings({
+          cfg,
           agentId,
-          tools: normalizedTools,
+          workspaceDir,
+          modelRef,
+          model,
         }),
       );
       if (!shouldCreateBundleMcpRuntimeForAttempt({ toolsEnabled: true })) {
@@ -387,16 +457,20 @@ export async function collectRuntimeToolSchemaFindings(
           });
           findings.push(...policyActiveDiagnostics.map(bundleMcpRuntimeDiagnosticFinding));
         }
-        findings.push(
-          ...collectBundleMcpRuntimeToolSchemaFindings({
-            bundleRuntime,
-            cfg,
-            agentId,
-            workspaceDir,
-            modelRef,
-            model,
-          }),
-        );
+        try {
+          findings.push(
+            ...collectBundleMcpRuntimeToolSchemaFindings({
+              bundleRuntime,
+              cfg,
+              agentId,
+              workspaceDir,
+              modelRef,
+              model,
+            }),
+          );
+        } catch (error) {
+          findings.push(bundleMcpRuntimeNormalizationFailureFinding(error));
+        }
       }
     }
   } finally {
